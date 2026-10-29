@@ -97,6 +97,12 @@ jobs:
             adb logcat -d > logcat.txt
             echo "----- crash and JS errors -----"; grep -E -A 40 "FATAL EXCEPTION|ReactNativeJS.*(Error|error)|Fatal signal" logcat.txt | head -300 || true
             adb shell pidof $APP_ID > /dev/null && echo "APP_RUNNING" || (echo "APP_NOT_RUNNING"; exit 1)
+            adb shell input keyevent KEYCODE_HOME && sleep 5 && adb shell am kill $APP_ID && sleep 3 && adb logcat -c
+            echo "----- scheduled jobs -----"; adb shell dumpsys jobscheduler | grep -E "JOB #.*$APP_ID" || true
+            JOB=$(adb shell dumpsys jobscheduler | grep -E "JOB #.*$APP_ID" | head -1 | sed -E 's|.*JOB #[^/]*/([0-9]+).*|\1|'); echo "forcing job $JOB with the app closed"; adb shell cmd jobscheduler run -f $APP_ID $JOB || true
+            sleep 45
+            echo "----- background check log -----"; adb logcat -d | grep -E "\[pearl\]|BackgroundTask|TaskService|AndroidRuntime" | head -80 || true
+            adb logcat -d | grep -q "\[pearl\] background check done" && echo "BACKGROUND_CHECK_RAN" || echo "BACKGROUND_CHECK_DID_NOT_RUN"
 
       - uses: actions/upload-artifact@v4
         if: always()
