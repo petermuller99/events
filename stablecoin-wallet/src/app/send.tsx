@@ -1,8 +1,22 @@
 import * as Clipboard from 'expo-clipboard';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Linking, Pressable, Text } from 'react-native';
-import { Banner, Body, Button, Card, Chips, colors, Field, Row, Screen } from '../components/ui';
+import { Linking, View } from 'react-native';
+import {
+  Banner,
+  Body,
+  Button,
+  Card,
+  Chips,
+  colors,
+  Field,
+  LinkButton,
+  Row,
+  Screen,
+  shortHash,
+  Sticker,
+  Text,
+} from '../components/ui';
 import { formatAmount, parseAmount, toInputAmount } from '../lib/amount';
 import { authenticate } from '../lib/auth';
 import { CHAIN_IDS, getChain, type ChainId } from '../lib/config';
@@ -121,11 +135,15 @@ export default function Send() {
   if (step === 'done' && result) {
     return (
       <Screen>
-        <Banner tone="success">Transaction submitted. It usually confirms within a minute.</Banner>
+        <View style={{ alignItems: 'center', gap: 6 }}>
+          <Sticker name="wheee" size={180} />
+          <Text style={{ fontSize: 28, fontWeight: '700' }}>Wheee, it’s on its way!</Text>
+          <Body muted>It usually arrives within a minute.</Body>
+        </View>
         <Card>
           <Row label="Sent" value={`${amountText} ${asset.symbol}`} />
           <Row label="Network" value={`${chain.name} (${chain.standard})`} />
-          <Row label="Transaction" value={result.hash} mono />
+          <Row label="Transaction" value={shortHash(result.hash)} mono />
         </Card>
         <Button
           title={`View on ${chain.explorerName}`}
@@ -161,7 +179,11 @@ export default function Send() {
             {chain.name} first.
           </Banner>
         ) : null}
-        {error ? <Banner tone="danger">{error}</Banner> : null}
+        {error ? (
+          <Banner tone="danger" sticker="hmm">
+            {error}
+          </Banner>
+        ) : null}
         <Button title="Confirm and send" onPress={confirm} loading={busy} disabled={short > 0n} />
         <Button title="Back" variant="secondary" onPress={() => setStep('form')} disabled={busy} />
       </Screen>
@@ -196,11 +218,7 @@ export default function Send() {
         onBlur={() => setTouched(true)}
         placeholder={chain.kind === 'tron' ? 'T…' : '0x…'}
         error={recipientError}
-        right={
-          <Pressable onPress={pasteAddress} hitSlop={8} accessibilityRole="button">
-            <Text style={{ color: colors.primary, fontWeight: '600' }}>Paste</Text>
-          </Pressable>
-        }
+        right={<LinkButton title="Paste" onPress={pasteAddress} />}
       />
       <Field
         label={`Amount (${asset.symbol})`}
@@ -214,13 +232,7 @@ export default function Send() {
         right={
           // Max is only offered for tokens: for the native coin the fee has to come out of it too.
           asset.contract && balance ? (
-            <Pressable
-              onPress={() => setAmountText(toInputAmount(balance, asset.decimals))}
-              hitSlop={8}
-              accessibilityRole="button"
-            >
-              <Text style={{ color: colors.primary, fontWeight: '600' }}>Max</Text>
-            </Pressable>
+            <LinkButton title="Max" onPress={() => setAmountText(toInputAmount(balance, asset.decimals))} />
           ) : null
         }
       />

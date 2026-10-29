@@ -1,9 +1,9 @@
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Linking, Text, View } from 'react-native';
+import { Linking, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
-import { Banner, Body, Button, Card, Chips, colors, Screen } from '../components/ui';
+import { Banner, Body, Button, Card, Chips, brandImages, colors, Screen, Text } from '../components/ui';
 import { CHAIN_IDS, getChain, type ChainId } from '../lib/config';
 import { addressFor } from '../lib/wallet';
 import { useUnlockedWallet } from '../state/WalletContext';
@@ -36,8 +36,17 @@ export default function Receive() {
         options={CHAIN_IDS.map((id) => ({ value: id, label: getChain(mode, id).name }))}
       />
       <Card style={{ alignItems: 'center' }}>
-        <View style={{ padding: 12, backgroundColor: '#fff', borderRadius: 12 }}>
-          <QRCode value={address} size={220} />
+        <View style={{ padding: 14, backgroundColor: '#fff', borderRadius: 18 }}>
+          <QRCode
+            value={address}
+            size={220}
+            color={colors.text}
+            logo={brandImages.mark}
+            logoSize={52}
+            logoBackgroundColor="#fff"
+            logoBorderRadius={12}
+            ecl="H"
+          />
         </View>
         <Text selectable style={{ fontFamily: 'monospace', fontSize: 14, color: colors.text, textAlign: 'center' }}>
           {address}

@@ -1,7 +1,7 @@
 import { getRandomBytes } from 'expo-crypto';
 import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { Banner, Body, Button, colors, Field, Screen } from '../components/ui';
+import { StyleSheet, View } from 'react-native';
+import { Banner, Body, Button, colors, Field, Screen, Sticker, Text } from '../components/ui';
 import { mnemonicFromEntropy } from '../lib/keys';
 import { errorMessage } from '../lib/wallet';
 import { useWallet } from '../state/WalletContext';
@@ -43,7 +43,10 @@ export default function CreateWallet() {
   if (step === 'show') {
     return (
       <Screen>
-        <Body>Write these 12 words down on paper, in order. They are the only way to restore your wallet.</Body>
+        <View style={s.intro}>
+          <Sticker name="cheeky" size={88} />
+          <Body>Write these 12 words on paper, in order. They’re the only way to get your wallet back.</Body>
+        </View>
         <View style={s.grid}>
           {words.map((w, i) => (
             <View key={i} style={s.word}>
@@ -53,7 +56,7 @@ export default function CreateWallet() {
           ))}
         </View>
         <Banner tone="warning">
-          Anyone with these words can take your funds. Don’t screenshot them, store them in the cloud or
+          Anyone with these words can take your money. Don’t screenshot them, store them in the cloud or
           share them.
         </Banner>
         <Button title="I've written them down" onPress={() => setStep('verify')} />
@@ -63,7 +66,10 @@ export default function CreateWallet() {
 
   return (
     <Screen>
-      <Body>Confirm two words from your recovery phrase.</Body>
+      <View style={s.intro}>
+        <Sticker name="curious" size={88} />
+        <Body>Quick check: which words are these?</Body>
+      </View>
       {challenge.map((pos, i) => (
         <Field
           key={pos}
@@ -83,6 +89,7 @@ export default function CreateWallet() {
 }
 
 const s = StyleSheet.create({
+  intro: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   word: {
     width: '31%',
@@ -90,11 +97,11 @@ const s = StyleSheet.create({
     gap: 6,
     alignItems: 'center',
     padding: 10,
-    borderRadius: 10,
+    borderRadius: 14,
     backgroundColor: colors.card,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     borderColor: colors.border,
   },
   index: { color: colors.muted, fontSize: 12, width: 16 },
-  text: { color: colors.text, fontSize: 15, fontWeight: '600' },
+  text: { fontSize: 16, fontWeight: '600' },
 });

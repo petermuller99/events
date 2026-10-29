@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { View } from 'react-native';
-import { Banner, Body, Button, Screen, Title } from '../components/ui';
+import { StyleSheet, View } from 'react-native';
+import { useIntroDone } from '../components/LaunchIntro';
+import { Banner, Button, colors, Screen, Sticker, Text } from '../components/ui';
 import { useWallet } from '../state/WalletContext';
 
 export default function Unlock() {
   const { unlock } = useWallet();
+  const introDone = useIntroDone();
   const [busy, setBusy] = useState(true);
   const [failed, setFailed] = useState(false);
 
@@ -17,10 +19,10 @@ export default function Unlock() {
     [unlock],
   );
 
-  // Prompt for Face ID / fingerprint as soon as the screen opens.
+  // Prompt for Face ID / fingerprint once the launch intro is out of the way.
   useEffect(() => {
-    run();
-  }, [run]);
+    if (introDone) run();
+  }, [introDone, run]);
 
   const retry = () => {
     setBusy(true);
@@ -29,12 +31,20 @@ export default function Unlock() {
   };
 
   return (
-    <Screen>
-      <View style={{ height: 96 }} />
-      <Title>Wallet locked</Title>
-      <Body muted>Unlock with Face ID, fingerprint or your phone’s passcode.</Body>
-      {failed ? <Banner tone="warning">Unlock was cancelled or failed.</Banner> : null}
-      <Button title="Unlock" onPress={retry} loading={busy} />
+    <Screen honey>
+      <View style={s.hero}>
+        <Sticker name={failed ? 'hmm' : 'hello'} size={200} />
+        <Text style={s.title}>{failed ? 'Hmm, try again?' : 'Welcome back'}</Text>
+        <Text style={s.body}>Unlock with your fingerprint, face or phone passcode.</Text>
+      </View>
+      {failed ? <Banner tone="warning">Unlock was cancelled or didn’t work.</Banner> : null}
+      <Button title="Unlock" variant="dark" onPress={retry} loading={busy} />
     </Screen>
   );
 }
+
+const s = StyleSheet.create({
+  hero: { alignItems: 'center', gap: 8, marginTop: 64, marginBottom: 16 },
+  title: { fontSize: 30, fontWeight: '700' },
+  body: { fontSize: 16, color: colors.text, textAlign: 'center' },
+});

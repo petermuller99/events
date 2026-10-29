@@ -1,24 +1,40 @@
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { View } from 'react-native';
-import { Body, Button, Card, Screen, Title } from '../components/ui';
+import { StyleSheet, View } from 'react-native';
+import { brandImages, Button, Card, colors, Screen, Text } from '../components/ui';
 
 export default function Welcome() {
   return (
-    <Screen>
-      <View style={{ height: 48 }} />
-      <Title>Stablecoin Wallet</Title>
-      <Body muted>
-        Hold and send USDT and USDC on Ethereum (ERC-20), BNB Smart Chain (BEP-20) and Tron (TRC-20)
-        from one recovery phrase.
-      </Body>
-      <Card>
-        <Body>
-          Your keys stay on this phone. Nobody, including the app’s authors, can recover your funds
-          if you lose your recovery phrase.
-        </Body>
+    <Screen honey>
+      <View style={s.hero}>
+        <Image source={brandImages.laughLoop} style={s.laugh} contentFit="contain" autoplay />
+        <Text style={s.wordmark}>pearl</Text>
+        <Text style={s.tagline}>her first wallet</Text>
+      </View>
+      <Card style={s.card}>
+        <Text style={s.lead}>Dollars that live on your phone.</Text>
+        <Text style={s.body}>
+          Hold and send USDT and USDC on Ethereum, BNB Smart Chain and Tron, all from one secret
+          phrase.
+        </Text>
+        <Text style={s.small}>
+          Your keys stay on this phone. Nobody, not even Pearl’s makers, can recover your money if
+          you lose your phrase.
+        </Text>
       </Card>
-      <Button title="Create a new wallet" onPress={() => router.push('/create')} />
-      <Button title="I already have a recovery phrase" variant="secondary" onPress={() => router.push('/import')} />
+      <Button title="Create my wallet" variant="dark" onPress={() => router.push('/create')} />
+      <Button title="I already have a phrase" variant="secondary" onPress={() => router.push('/import')} />
     </Screen>
   );
 }
+
+const s = StyleSheet.create({
+  hero: { alignItems: 'center', marginTop: 8 },
+  laugh: { width: 240, height: 240 },
+  wordmark: { fontSize: 64, fontWeight: '700', lineHeight: 70, marginTop: -12 },
+  tagline: { fontSize: 22, fontWeight: '600', color: colors.caramel },
+  card: { backgroundColor: 'rgba(255,255,255,0.85)', borderColor: 'transparent' },
+  lead: { fontSize: 19, fontWeight: '600' },
+  body: { fontSize: 16, lineHeight: 23 },
+  small: { fontSize: 14, lineHeight: 20, color: colors.muted },
+});

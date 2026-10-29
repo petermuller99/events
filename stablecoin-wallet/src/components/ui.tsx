@@ -1,69 +1,159 @@
+import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import type { ReactElement, ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
+  Text as RNText,
   ScrollView,
   StyleSheet,
-  Text,
   TextInput,
   View,
   type RefreshControlProps,
   type TextInputProps,
+  type TextProps,
+  type ImageStyle,
+  type TextStyle,
   type ViewStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+// Pearl brand: honey gradient, cocoa text, caramel accents, sky-blue hexagon, pink.
 export const colors = {
-  bg: '#F5F6F8',
+  honeyTop: '#FFD55B',
+  honeyBottom: '#FFA62B',
+  honey: '#FFBE45',
+  bg: '#FFF7E6',
   card: '#FFFFFF',
-  text: '#14171F',
-  muted: '#646B7A',
-  border: '#E1E4EA',
-  primary: '#1F6FEB',
-  primaryText: '#FFFFFF',
-  danger: '#C62828',
-  dangerBg: '#FDECEC',
-  warning: '#8A5A00',
-  warningBg: '#FFF4D6',
-  info: '#0B5CAD',
-  infoBg: '#E7F1FD',
-  success: '#1B7F3B',
-  successBg: '#E6F5EA',
+  text: '#3B2209',
+  muted: '#7A5A3A',
+  caramel: '#A05A14',
+  border: '#F1DDB5',
+  sky: '#7EC4F0',
+  pink: '#F09CA9',
+  danger: '#B3261E',
+  dangerBg: '#FDE8E6',
+  warning: '#7A4A00',
+  warningBg: '#FFEFC2',
+  info: '#1E5C86',
+  infoBg: '#E3F2FC',
+  success: '#2E6B30',
+  successBg: '#E6F4E2',
+};
+
+export const honeyGradient = [colors.honeyTop, colors.honeyBottom] as const;
+
+export const fonts = {
+  regular: 'Fredoka_400Regular',
+  medium: 'Fredoka_500Medium',
+  semibold: 'Fredoka_600SemiBold',
+  bold: 'Fredoka_700Bold',
 };
 
 export const chainColors: Record<string, string> = {
   ethereum: '#627EEA',
-  bsc: '#D9A400',
+  bsc: '#E0A800',
   tron: '#E50914',
 };
+
+const stickers = {
+  wheee: require('../../assets/brand/stickers/wheee.png'),
+  laugh: require('../../assets/brand/stickers/laugh.png'),
+  hello: require('../../assets/brand/stickers/hello.png'),
+  cheeky: require('../../assets/brand/stickers/cheeky.png'),
+  hmm: require('../../assets/brand/stickers/hmm.png'),
+  curious: require('../../assets/brand/stickers/curious.png'),
+};
+
+export const brandImages = {
+  mark: require('../../assets/brand/mark.png'),
+  laughLoop: require('../../assets/brand/laugh-loop.webp'),
+};
+
+export type StickerName = keyof typeof stickers;
+
+export function Sticker({ name, size = 120, style }: { name: StickerName; size?: number; style?: ImageStyle }) {
+  return (
+    <Image
+      source={stickers[name]}
+      style={[{ width: size, height: size }, style]}
+      contentFit="contain"
+      accessibilityIgnoresInvertColors
+    />
+  );
+}
+
+const familyForWeight: Record<string, string> = {
+  normal: fonts.regular,
+  '300': fonts.regular,
+  '400': fonts.regular,
+  '500': fonts.medium,
+  '600': fonts.semibold,
+  bold: fonts.bold,
+  '700': fonts.bold,
+  '800': fonts.bold,
+  '900': fonts.bold,
+};
+
+/**
+ * Text in the brand font. Custom fonts ship one file per weight, so fontWeight is
+ * turned into the matching Fredoka family (Android ignores fontWeight on custom fonts).
+ */
+export function Text({ style, ...props }: TextProps) {
+  const { fontWeight, fontFamily, ...rest } = (StyleSheet.flatten(style) ?? {}) as TextStyle;
+  const family = fontFamily ?? familyForWeight[String(fontWeight ?? '400')] ?? fonts.regular;
+  return <RNText {...props} style={[{ color: colors.text }, rest, { fontFamily: family }]} />;
+}
+
+export function HoneyBackground({ children, style }: { children?: ReactNode; style?: ViewStyle }) {
+  return (
+    <LinearGradient colors={honeyGradient} style={[{ flex: 1 }, style]}>
+      {children}
+    </LinearGradient>
+  );
+}
 
 export function Screen({
   children,
   refreshControl,
   scroll = true,
+  honey = false,
 }: {
   children: ReactNode;
   refreshControl?: ReactElement<RefreshControlProps>;
   scroll?: boolean;
+  /** Full honey-gradient background, for brand moments like onboarding. */
+  honey?: boolean;
 }) {
+  const body = scroll ? (
+    <ScrollView
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+      refreshControl={refreshControl}
+    >
+      {children}
+    </ScrollView>
+  ) : (
+    <View style={[styles.content, { flex: 1 }]}>{children}</View>
+  );
+  if (honey) {
+    return (
+      <HoneyBackground>
+        <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom', 'left', 'right']}>
+          {body}
+        </SafeAreaView>
+      </HoneyBackground>
+    );
+  }
   return (
     <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
-      {scroll ? (
-        <ScrollView
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
-          refreshControl={refreshControl}
-        >
-          {children}
-        </ScrollView>
-      ) : (
-        <View style={[styles.content, { flex: 1 }]}>{children}</View>
-      )}
+      {body}
     </SafeAreaView>
   );
 }
 
-type ButtonVariant = 'primary' | 'secondary' | 'danger';
+/** primary: honey gradient. dark: cocoa, for use on honey backgrounds. */
+type ButtonVariant = 'primary' | 'dark' | 'secondary' | 'danger';
 
 export function Button({
   title,
@@ -81,6 +171,19 @@ export function Button({
   style?: ViewStyle;
 }) {
   const inactive = disabled || loading;
+  const label = loading ? (
+    <ActivityIndicator color={variant === 'dark' ? colors.honeyTop : colors.text} />
+  ) : (
+    <Text
+      style={[
+        styles.buttonText,
+        variant === 'danger' && { color: colors.danger },
+        variant === 'dark' && { color: colors.honeyTop },
+      ]}
+    >
+      {title}
+    </Text>
+  );
   return (
     <Pressable
       accessibilityRole="button"
@@ -91,14 +194,21 @@ export function Button({
         styles.button,
         styles[`button_${variant}`],
         inactive && styles.buttonDisabled,
-        pressed && { opacity: 0.8 },
+        pressed && { transform: [{ scale: 0.98 }] },
         style,
       ]}
     >
-      {loading ? (
-        <ActivityIndicator color={variant === 'primary' ? colors.primaryText : colors.text} />
+      {variant === 'primary' ? (
+        <LinearGradient
+          colors={honeyGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.buttonFill}
+        >
+          {label}
+        </LinearGradient>
       ) : (
-        <Text style={[styles.buttonText, styles[`buttonText_${variant}`]]}>{title}</Text>
+        <View style={styles.buttonFill}>{label}</View>
       )}
     </Pressable>
   );
@@ -108,16 +218,27 @@ export function Card({ children, style }: { children: ReactNode; style?: ViewSty
   return <View style={[styles.card, style]}>{children}</View>;
 }
 
-export function Banner({ tone, children }: { tone: 'info' | 'warning' | 'danger' | 'success'; children: ReactNode }) {
-  const palette = {
-    info: [colors.infoBg, colors.info],
-    warning: [colors.warningBg, colors.warning],
-    danger: [colors.dangerBg, colors.danger],
-    success: [colors.successBg, colors.success],
-  }[tone];
+const bannerPalette = {
+  info: [colors.infoBg, colors.info],
+  warning: [colors.warningBg, colors.warning],
+  danger: [colors.dangerBg, colors.danger],
+  success: [colors.successBg, colors.success],
+} as const;
+
+export function Banner({
+  tone,
+  children,
+  sticker,
+}: {
+  tone: keyof typeof bannerPalette;
+  children: ReactNode;
+  sticker?: StickerName;
+}) {
+  const [bg, fg] = bannerPalette[tone];
   return (
-    <View style={[styles.banner, { backgroundColor: palette[0] }]}>
-      <Text style={[styles.bannerText, { color: palette[1] }]}>{children}</Text>
+    <View style={[styles.banner, { backgroundColor: bg }]}>
+      {sticker ? <Sticker name={sticker} size={44} /> : null}
+      <Text style={[styles.bannerText, { color: fg }]}>{children}</Text>
     </View>
   );
 }
@@ -136,6 +257,7 @@ export function Field({
           placeholderTextColor={colors.muted}
           autoCapitalize="none"
           autoCorrect={false}
+          selectionColor={colors.caramel}
           {...input}
           style={[styles.input, error ? { borderColor: colors.danger } : null, input.style]}
         />
@@ -194,69 +316,82 @@ export function Body({ children, muted }: { children: ReactNode; muted?: boolean
   return <Text style={[styles.body, muted && { color: colors.muted }]}>{children}</Text>;
 }
 
+/** Inline text button, e.g. "Paste" or "Max" next to an input. */
+export function LinkButton({ title, onPress }: { title: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} hitSlop={10} accessibilityRole="button">
+      <Text style={styles.link}>{title}</Text>
+    </Pressable>
+  );
+}
+
 export function shortAddress(address: string): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }
 
+export function shortHash(hash: string): string {
+  return `${hash.slice(0, 10)}…${hash.slice(-8)}`;
+}
+
 export const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 16, gap: 12, paddingBottom: 32 },
-  title: { fontSize: 22, fontWeight: '700', color: colors.text },
-  body: { fontSize: 15, lineHeight: 22, color: colors.text },
+  content: { padding: 16, gap: 14, paddingBottom: 40 },
+  title: { fontSize: 26, fontWeight: '700' },
+  body: { fontSize: 16, lineHeight: 23 },
   mono: { fontFamily: 'monospace' },
+  link: { color: colors.caramel, fontWeight: '600', fontSize: 15 },
   card: {
     backgroundColor: colors.card,
-    borderRadius: 14,
+    borderRadius: 22,
     padding: 16,
     gap: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
-  button: {
-    minHeight: 48,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  button_primary: { backgroundColor: colors.primary },
-  button_secondary: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
-  button_danger: { backgroundColor: colors.dangerBg },
-  buttonDisabled: { opacity: 0.5 },
-  buttonText: { fontSize: 16, fontWeight: '600' },
-  buttonText_primary: { color: colors.primaryText },
-  buttonText_secondary: { color: colors.text },
-  buttonText_danger: { color: colors.danger },
-  banner: { borderRadius: 10, padding: 12 },
-  bannerText: { fontSize: 14, lineHeight: 20 },
-  field: { gap: 6 },
-  label: { fontSize: 14, fontWeight: '600', color: colors.text },
-  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  input: {
-    flex: 1,
-    minHeight: 48,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 12,
+    shadowColor: colors.caramel,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  button: { minHeight: 52, borderRadius: 999, overflow: 'hidden' },
+  buttonFill: { flex: 1, minHeight: 52, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20 },
+  button_primary: {},
+  button_dark: { backgroundColor: colors.text },
+  button_secondary: { backgroundColor: colors.card, borderWidth: 1.5, borderColor: colors.text },
+  button_danger: { backgroundColor: colors.dangerBg },
+  buttonDisabled: { opacity: 0.45 },
+  buttonText: { fontSize: 17, fontWeight: '600', color: colors.text },
+  banner: { borderRadius: 16, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  bannerText: { fontSize: 14, lineHeight: 20, flex: 1 },
+  field: { gap: 6 },
+  label: { fontSize: 15, fontWeight: '600' },
+  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  input: {
+    flex: 1,
+    minHeight: 52,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: 16,
+    paddingHorizontal: 14,
     fontSize: 16,
+    fontFamily: fonts.regular,
     color: colors.text,
     backgroundColor: colors.card,
   },
   error: { color: colors.danger, fontSize: 13 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
     borderRadius: 999,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: colors.border,
     backgroundColor: colors.card,
   },
-  chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { fontSize: 14, color: colors.text, fontWeight: '500' },
-  chipTextSelected: { color: colors.primaryText },
+  chipSelected: { backgroundColor: colors.text, borderColor: colors.text },
+  chipText: { fontSize: 15, fontWeight: '500' },
+  chipTextSelected: { color: colors.honeyTop },
   row: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
   rowLabel: { fontSize: 14, color: colors.muted },
-  rowValue: { fontSize: 14, color: colors.text, flexShrink: 1, textAlign: 'right' },
+  rowValue: { fontSize: 14, flexShrink: 1, textAlign: 'right' },
 });

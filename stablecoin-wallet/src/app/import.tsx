@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Banner, Body, Button, Field, Screen } from '../components/ui';
+import { View } from 'react-native';
+import { Banner, Body, Button, Field, Screen, Sticker } from '../components/ui';
 import { isValidMnemonic, normalizeMnemonic } from '../lib/keys';
 import { errorMessage } from '../lib/wallet';
 import { useWallet } from '../state/WalletContext';
@@ -28,6 +29,9 @@ export default function ImportWallet() {
 
   return (
     <Screen>
+      <View style={{ alignItems: 'center' }}>
+        <Sticker name="curious" size={120} />
+      </View>
       <Body muted>
         Enter your 12 or 24-word recovery phrase. Phrases from MetaMask, Trust Wallet and TronLink
         restore the same addresses.

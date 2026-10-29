@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
 import { useState } from 'react';
-import { Alert, Linking, StyleSheet, Text, View } from 'react-native';
-import { Banner, Body, Button, Card, colors, Row, Screen } from '../components/ui';
+import { Alert, Linking, StyleSheet, View } from 'react-native';
+import { Banner, Body, Button, Card, colors, Row, Screen, Text } from '../components/ui';
 import { authenticate } from '../lib/auth';
 import { CHAIN_IDS, getChain } from '../lib/config';
 import { EVM_PATH, TRON_PATH } from '../lib/keys';
@@ -86,8 +86,8 @@ export default function Settings() {
 }
 
 const s = StyleSheet.create({
-  heading: { fontSize: 17, fontWeight: '700', color: colors.text },
-  chain: { fontSize: 14, fontWeight: '600', color: colors.text },
-  address: { fontFamily: 'monospace', fontSize: 13, color: colors.primary },
-  phrase: { fontSize: 17, lineHeight: 28, color: colors.text, fontWeight: '600' },
+  heading: { fontSize: 19, fontWeight: '700' },
+  chain: { fontSize: 15, fontWeight: '600' },
+  address: { fontFamily: 'monospace', fontSize: 13, color: colors.caramel },
+  phrase: { fontSize: 18, lineHeight: 30, fontWeight: '600' },
 });

@@ -1,6 +1,6 @@
-# Stablecoin Wallet
+# Pearl — her first wallet
 
-A simple non-custodial mobile wallet (iOS and Android, built with Expo) for USDT and USDC on:
+Pearl is a simple non-custodial mobile wallet (iOS and Android, built with Expo) for USDT and USDC on:
 
 | Network | Standard | Tokens | Fee coin |
 |---|---|---|---|
@@ -16,6 +16,8 @@ gets its own `T…` address. The phrase uses standard BIP-44 paths (`m/44'/60'/0
 
 ## Features
 
+- Pearl branding throughout: honey colours, the Fredoka font, a launch intro with her laugh
+  (tap to skip) and stickers on key screens. Brand files live in `assets/brand/`.
 - Create a wallet (with a written-backup check) or import an existing phrase
 - Balances for each token plus the fee coin, and a total across chains
 - Receive screen with QR code, copy button and a wrong-network warning

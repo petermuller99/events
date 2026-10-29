@@ -1,16 +1,49 @@
+import {
+  Fredoka_400Regular,
+  Fredoka_500Medium,
+  Fredoka_600SemiBold,
+  Fredoka_700Bold,
+  useFonts,
+} from '@expo-google-fonts/fredoka';
 import { Stack } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { colors } from '../components/ui';
+import { IntroDoneContext, LaunchIntro } from '../components/LaunchIntro';
+import { colors, fonts } from '../components/ui';
 import { useWallet, WalletProvider } from '../state/WalletContext';
 
+SplashScreen.preventAutoHideAsync();
+
 export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({
+    Fredoka_400Regular,
+    Fredoka_500Medium,
+    Fredoka_600SemiBold,
+    Fredoka_700Bold,
+  });
+  const [introDone, setIntroDone] = useState(false);
+  const finishIntro = useCallback(() => setIntroDone(true), []);
+  const ready = fontsLoaded || !!fontError;
+
+  useEffect(() => {
+    if (ready) SplashScreen.hideAsync();
+  }, [ready]);
+
+  if (!ready) return null;
+
   return (
     <SafeAreaProvider>
       <WalletProvider>
         <StatusBar style="dark" />
-        <Routes />
+        <IntroDoneContext.Provider value={introDone}>
+          <View style={{ flex: 1, backgroundColor: colors.bg }}>
+            <Routes />
+            {!introDone ? <LaunchIntro onDone={finishIntro} /> : null}
+          </View>
+        </IntroDoneContext.Provider>
       </WalletProvider>
     </SafeAreaProvider>
   );
@@ -18,13 +51,10 @@ export default function RootLayout() {
 
 function Routes() {
   const { status } = useWallet();
-  if (status === 'loading') {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg }}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
-  }
+  // The launch intro covers the screen while the wallet state loads.
+  if (status === 'loading') return null;
+  // Where to send someone who lands on a screen they can't use in this state.
+  const home = status === 'empty' ? '/welcome' : status === 'locked' ? '/unlock' : '/';
   // Each group of screens is only reachable in its wallet state; the router
   // redirects to an allowed screen whenever the state changes.
   return (
@@ -32,19 +62,22 @@ function Routes() {
       screenOptions={{
         headerStyle: { backgroundColor: colors.bg },
         headerShadowVisible: false,
+        headerTintColor: colors.text,
+        headerTitleStyle: { fontFamily: fonts.bold, fontSize: 20 },
+        headerBackButtonDisplayMode: 'minimal',
         contentStyle: { backgroundColor: colors.bg },
       }}
     >
-      <Stack.Protected guard={status === 'unlocked'}>
-        <Stack.Screen name="index" options={{ title: 'Wallet' }} />
+      <Stack.Protected guard={status === 'unlocked'} redirectTo={home}>
+        <Stack.Screen name="index" options={{ title: 'pearl' }} />
         <Stack.Screen name="send" options={{ title: 'Send' }} />
         <Stack.Screen name="receive" options={{ title: 'Receive' }} />
         <Stack.Screen name="settings" options={{ title: 'Settings' }} />
       </Stack.Protected>
-      <Stack.Protected guard={status === 'locked'}>
+      <Stack.Protected guard={status === 'locked'} redirectTo={home}>
         <Stack.Screen name="unlock" options={{ headerShown: false }} />
       </Stack.Protected>
-      <Stack.Protected guard={status === 'empty'}>
+      <Stack.Protected guard={status === 'empty'} redirectTo={home}>
         <Stack.Screen name="welcome" options={{ headerShown: false }} />
         <Stack.Screen name="create" options={{ title: 'New wallet' }} />
         <Stack.Screen name="import" options={{ title: 'Import wallet' }} />

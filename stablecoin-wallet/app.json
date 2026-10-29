@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Stablecoin Wallet",
+    "name": "Pearl",
     "slug": "stablecoin-wallet",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -12,7 +12,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#FFBE45",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -37,7 +37,21 @@
         {
           "faceIDPermission": "Use Face ID to unlock your wallet and approve payments."
         }
-      ]
+      ],
+      "expo-image",
+      "expo-video",
+      "expo-font",
+      "expo-splash-screen",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#FFBE45",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200
+        }
+      ],
+      "expo-video",
+      "expo-font"
     ],
     "scheme": "stablecoinwallet"
   }
