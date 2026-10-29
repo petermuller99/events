@@ -329,9 +329,18 @@ export class SolanaClient {
     return r.value.reduce((sum, a) => sum + BigInt(a.account.data.parsed.info.tokenAmount.amount), 0n);
   }
 
+  /**
+   * Reads decimals straight from the mint account. (getTokenSupply is refused for
+   * USDC by the public mainnet node, so it can't be used for this.)
+   */
   async getTokenDecimals(mint: string): Promise<number> {
-    const r = await this.call<{ value: { decimals: number } }>('getTokenSupply', [mint]);
-    return r.value.decimals;
+    const r = await this.call<{ value: { data: { parsed?: { info?: { decimals?: number } } } } | null }>(
+      'getAccountInfo',
+      [mint, { encoding: 'jsonParsed', commitment: 'confirmed' }],
+    );
+    const decimals = r.value?.data.parsed?.info?.decimals;
+    if (decimals == null) throw new Error(`Not a token mint: ${mint}`);
+    return decimals;
   }
 
   async accountExists(address: string): Promise<boolean> {

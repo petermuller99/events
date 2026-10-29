@@ -13,7 +13,8 @@ permissions:
 
 concurrency:
   group: stablecoin-wallet-android-${{ github.ref }}
-  cancel-in-progress: true
+  # Queue instead of cancelling, so a running emulator check always reports.
+  cancel-in-progress: false
 
 env:
   APP_ID: com.example.stablecoinwallet
