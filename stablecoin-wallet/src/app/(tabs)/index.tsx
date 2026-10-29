@@ -46,6 +46,12 @@ function coinValue(row: ChainBalances, asset: ChainBalances['assets'][number]['a
   return price == null ? null : nativeValue(balance, asset.decimals, price);
 }
 
+/** Most valuable first, e.g. $100 USDT before $20 SOL; coins without a price go last. */
+function byValue(a: { value: bigint | null }, b: { value: bigint | null }): number {
+  if (a.value == null || b.value == null) return Number(a.value == null) - Number(b.value == null);
+  return a.value === b.value ? 0 : a.value > b.value ? -1 : 1;
+}
+
 /** Sum of all coins' dollar values. */
 function totalValue(rows: ChainBalances[], prices: NativePrices): bigint {
   let total = 0n;
@@ -101,13 +107,10 @@ export default function Home() {
   const total = rows ? totalValue(rows, prices) : 0n;
   const dollars = Number(total / 10n ** 16n) / 100;
   const percent = goal ? goalPercent(goal, dollars) : 0;
-  // Fee coins first on each network, then its stablecoins.
-  const coins =
-    rows?.flatMap((r) =>
-      [...r.assets]
-        .sort((a, b) => Number(!!a.asset.contract) - Number(!!b.asset.contract))
-        .map((a) => ({ ...a, chain: r.chain, value: coinValue(r, a.asset, a.balance, prices) })),
-    ) ?? [];
+  const coins = (
+    rows?.flatMap((r) => r.assets.map((a) => ({ ...a, chain: r.chain, value: coinValue(r, a.asset, a.balance, prices) }))) ??
+    []
+  ).sort(byValue);
   const failed = rows?.filter((r) => r.error) ?? [];
 
   return (
