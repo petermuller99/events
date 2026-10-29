@@ -111,10 +111,13 @@ jobs:
             JOB=$(adb shell dumpsys jobscheduler | grep -E "JOB #.*$APP_ID" | head -1 | sed -E 's|.*JOB #[^/]*/([0-9]+).*|\1|'); echo "1) forcing job $JOB with the app in the background"; adb shell cmd jobscheduler run -f $APP_ID $JOB || true
             sleep 40
             echo "----- background check log (app in background) -----"; adb logcat -d | grep -iE "pearl|WM-|BackgroundTask|TaskManager|ExpoTask|ReactNativeJS|AndroidRuntime" | grep -v NetworkScheduler | head -150 || true
-            adb shell am kill $APP_ID && sleep 3 && adb logcat -c
+            adb shell am kill $APP_ID && sleep 15
+            echo "----- our job after closing the app -----"; adb shell dumpsys jobscheduler | grep -A25 -E "JOB #.*$APP_ID" | head -40 || true
+            adb logcat -c
             JOB=$(adb shell dumpsys jobscheduler | grep -E "JOB #.*$APP_ID" | head -1 | sed -E 's|.*JOB #[^/]*/([0-9]+).*|\1|'); echo "2) forcing job $JOB with the app closed"; adb shell cmd jobscheduler run -f $APP_ID $JOB || true
-            sleep 45
-            echo "----- background check log (app closed) -----"; adb logcat -d | grep -iE "pearl|WM-|BackgroundTask|TaskManager|ExpoTask|ReactNativeJS|AndroidRuntime" | grep -v NetworkScheduler | head -150 || true
+            sleep 60
+            echo "----- background check log (app closed) -----"; adb logcat -d | grep -iE "pearl|stablecoinwallet|WM-|BackgroundTask|TaskManager|TaskService|ExpoTask|Expo |ReactNativeJS|ReactHost|AndroidRuntime|FATAL" | grep -v -E "NetworkScheduler|googlequicksearchbox" | head -200 || true
+            echo "----- our job after forcing -----"; adb shell dumpsys jobscheduler | grep -A12 -E "JOB #.*$APP_ID" | head -30 || true
             adb logcat -d | grep -q "\[pearl\] background check done" && echo "BACKGROUND_CHECK_RAN" || echo "BACKGROUND_CHECK_DID_NOT_RUN"
 
       - uses: actions/upload-artifact@v4

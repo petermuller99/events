@@ -66,7 +66,7 @@
         "expo-build-properties",
         {
           "android": {
-            "extraProguardRules": "# WorkManager (used by expo-background-task) creates its Room database by class name;\n# without these, R8 renames or strips it and the app crashes on launch.\n-keep class * extends androidx.room.RoomDatabase { *; }\n-keep class androidx.work.impl.WorkDatabase_Impl { *; }\n-keep class androidx.work.** { *; }\n# expo-task-manager saves task consumer class names and reloads them by name,\n# so they must keep the same names across builds for updates to keep working.\n-keep class expo.modules.backgroundtask.** { *; }\n-keep class expo.modules.taskmanager.** { *; }\n-keep class expo.modules.interfaces.taskManager.** { *; }\n"
+            "extraProguardRules": "# WorkManager (used by expo-background-task) creates its Room database by class name;\n# without these, R8 renames or strips it and the app crashes on launch.\n-keep class * extends androidx.room.RoomDatabase { *; }\n-keep class androidx.work.impl.WorkDatabase_Impl { *; }\n-keep class androidx.work.** { *; }\n# expo-task-manager saves task consumer class names and reloads them by name,\n# so they must keep the same names across builds for updates to keep working.\n-keep class expo.modules.backgroundtask.** { *; }\n-keep class expo.modules.taskmanager.** { *; }\n-keep class expo.modules.interfaces.taskManager.** { *; }\n# The headless app loader (starts the JS for a background check while the app is closed)\n# is looked up by the class name in the manifest.\n-keep class expo.modules.apploader.** { *; }\n-keep class expo.modules.adapters.react.apploader.** { *; }\n"
           }
         }
       ]
