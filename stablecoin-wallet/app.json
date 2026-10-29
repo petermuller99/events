@@ -58,6 +58,14 @@
           "color": "#FFA62B",
           "enableRemoteNotifications": false
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "extraProguardRules": "# WorkManager (used by expo-background-task) creates its Room database by class name;\n# without these, R8 renames or strips it and the app crashes on launch.\n-keep class * extends androidx.room.RoomDatabase { *; }\n-keep class androidx.work.impl.WorkDatabase_Impl { *; }\n-keep class androidx.work.** { *; }\n"
+          }
+        }
       ]
     ],
     "scheme": "stablecoinwallet"
