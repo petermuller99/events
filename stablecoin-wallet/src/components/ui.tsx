@@ -383,7 +383,8 @@ export function shortHash(hash: string): string {
 
 export const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 16, gap: 14, paddingBottom: 40 },
+  // flexGrow lets a screen push its buttons to the bottom with a flex: 1 spacer.
+  content: { padding: 16, gap: 14, paddingBottom: 40, flexGrow: 1 },
   title: { fontSize: 26, fontWeight: '700' },
   body: { fontSize: 16, lineHeight: 23 },
   mono: { fontFamily: 'monospace' },

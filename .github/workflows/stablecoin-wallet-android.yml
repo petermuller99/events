@@ -118,6 +118,12 @@ jobs:
             sleep 60
             echo "----- background check log (app closed) -----"; adb logcat -d | grep -iE "pearl|stablecoinwallet|WM-|BackgroundTask|TaskManager|TaskService|ExpoTask|Expo |ReactNativeJS|ReactHost|AndroidRuntime|FATAL" | grep -v -E "NetworkScheduler|googlequicksearchbox" | head -200 || true
             echo "----- our job after forcing -----"; adb shell dumpsys jobscheduler | grep -A12 -E "JOB #.*$APP_ID" | head -30 || true
+            # Waking a closed app makes WorkManager replace its scheduled job on startup, which
+            # cancels that first forced run. Force the replacement too, in the same headless process.
+            sleep 10 && adb logcat -c
+            JOB=$(adb shell dumpsys jobscheduler | grep -E "JOB #.*$APP_ID" | head -1 | sed -E 's|.*JOB #[^/]*/([0-9]+).*|\1|'); echo "3) forcing job $JOB again, app still closed"; adb shell cmd jobscheduler run -f $APP_ID $JOB || true
+            sleep 60
+            echo "----- background check log (app closed, second try) -----"; adb logcat -d | grep -iE "pearl|stablecoinwallet|WM-|BackgroundTask|TaskManager|TaskService|ExpoTask|Expo |ReactNativeJS|ReactHost|AndroidRuntime|FATAL" | grep -v -E "NetworkScheduler|googlequicksearchbox" | head -200 || true
             adb logcat -d | grep -q "\[pearl\] background check done" && echo "BACKGROUND_CHECK_RAN" || echo "BACKGROUND_CHECK_DID_NOT_RUN"
 
       - uses: actions/upload-artifact@v4
