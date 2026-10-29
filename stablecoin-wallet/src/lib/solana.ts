@@ -323,10 +323,14 @@ export class SolanaClient {
 
   /** Sum of all of `owner`'s token accounts for `mint`. */
   async getTokenBalance(owner: string, mint: string): Promise<bigint> {
+    // Filter by token program, not by mint: the public mainnet node answers "could not
+    // find mint" for a USDC mint filter.
     const r = await this.call<{
-      value: { account: { data: { parsed: { info: { tokenAmount: { amount: string } } } } } }[];
-    }>('getTokenAccountsByOwner', [owner, { mint }, { encoding: 'jsonParsed', commitment: 'confirmed' }]);
-    return r.value.reduce((sum, a) => sum + BigInt(a.account.data.parsed.info.tokenAmount.amount), 0n);
+      value: { account: { data: { parsed: { info: { mint: string; tokenAmount: { amount: string } } } } } }[];
+    }>('getTokenAccountsByOwner', [owner, { programId: TOKEN_PROGRAM }, { encoding: 'jsonParsed', commitment: 'confirmed' }]);
+    return r.value
+      .filter((a) => a.account.data.parsed.info.mint === mint)
+      .reduce((sum, a) => sum + BigInt(a.account.data.parsed.info.tokenAmount.amount), 0n);
   }
 
   /**

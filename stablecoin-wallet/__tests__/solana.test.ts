@@ -18,6 +18,7 @@ import {
   encodeAddress,
   priorityFeeInstructions,
   signTransaction,
+  SolanaClient,
   transferSolInstruction,
   transferTokenInstruction,
   TOKEN_PROGRAM,
@@ -96,5 +97,20 @@ describe('Solana transactions', () => {
     expect(transfer.data[0]).toBe(12);
     expect(Buffer.from(transfer.data).readBigUInt64LE(1)).toBe(5_000_000n);
     expect(transfer.data[9]).toBe(6);
+  });
+
+  it('adds up token balances for one mint, querying by token program', async () => {
+    const usdc = 'EPjFWdd5AufqSSqeM2qN1xxybapC8G4wEGGkZwyTDt1v';
+    const account = (mint: string, amount: string) => ({
+      account: { data: { parsed: { info: { mint, tokenAmount: { amount } } } } },
+    });
+    let params: unknown[] = [];
+    const client = new SolanaClient('https://rpc.test', async (_url, init) => {
+      params = JSON.parse(String(init?.body)).params;
+      const result = { value: [account(usdc, '1500000'), account('OtherMint111', '9'), account(usdc, '500000')] };
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result }));
+    });
+    expect(await client.getTokenBalance('Owner111', usdc)).toBe(2_000_000n);
+    expect(params[1]).toEqual({ programId: TOKEN_PROGRAM });
   });
 });
