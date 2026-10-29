@@ -21,10 +21,18 @@ live('Solana network (live)', () => {
   const devnet = getChain('testnet', 'solana');
 
   it('token contracts report the configured decimals', async () => {
+    const results: Record<string, string> = {};
+    const expected: Record<string, string> = {};
     for (const chain of [mainnet, devnet]) {
       const client = new SolanaClient(chain.rpcUrl);
-      for (const t of chain.tokens) expect(await client.getTokenDecimals(t.address)).toBe(t.decimals);
+      for (const t of chain.tokens) {
+        const key = `${chain.name} ${t.symbol} ${t.address}`;
+        expected[key] = String(t.decimals);
+        results[key] = await client.getTokenDecimals(t.address).then(String, (e: Error) => `error: ${e.message}`);
+      }
     }
+    console.log('Solana token checks:', JSON.stringify(results, null, 2));
+    expect(results).toEqual(expected);
   });
 
   // An unfunded sender: the node must parse and signature-check the transaction, then

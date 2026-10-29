@@ -137,12 +137,17 @@ export async function fetchChainBalances(
   const chain = getChain(mode, chainId);
   const address = addressFor(keys, chainId);
   const assets = listAssets(mode, chainId);
-  try {
-    const balances = await Promise.all(assets.map((a) => getBalance(chain, a, address)));
-    return { chain, address, assets: assets.map((asset, i) => ({ asset, balance: balances[i] })) };
-  } catch (e) {
-    return { chain, address, assets: [], error: errorMessage(e) };
+  // One coin failing (say, a token lookup) shouldn't hide the rest of the network.
+  const results = await Promise.allSettled(assets.map((a) => getBalance(chain, a, address)));
+  const ok = assets.flatMap((asset, i) => {
+    const r = results[i];
+    return r.status === 'fulfilled' ? [{ asset, balance: r.value }] : [];
+  });
+  if (!ok.length) {
+    const failed = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
+    return { chain, address, assets: [], error: errorMessage(failed.reason) };
   }
+  return { chain, address, assets: ok };
 }
 
 export function fetchAllBalances(mode: NetworkMode, keys: WalletKeys): Promise<ChainBalances[]> {
