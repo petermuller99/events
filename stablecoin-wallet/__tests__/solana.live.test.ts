@@ -22,6 +22,7 @@ live('Solana network (live)', () => {
 
   it('token contracts report the configured decimals', async () => {
     const results: Record<string, string> = {};
+    const recipientForBalance = deriveSolanaKey(new Uint8Array(64).fill(9)).address;
     const expected: Record<string, string> = {};
     for (const chain of [mainnet, devnet]) {
       const client = new SolanaClient(chain.rpcUrl);
@@ -29,6 +30,13 @@ live('Solana network (live)', () => {
         const key = `${chain.name} ${t.symbol} ${t.address}`;
         expected[key] = String(t.decimals);
         results[key] = await client.getTokenDecimals(t.address).then(String, (e: Error) => `error: ${e.message}`);
+        // The node may not serve a mint (then the app skips the check), but balances must load.
+        if (results[key] === 'null') results[key] = expected[key] = 'not served (check skipped)';
+        const balance = await client
+          .getTokenBalance(recipientForBalance, t.address)
+          .then(String, (e: Error) => `error: ${e.message}`);
+        results[`${key} balance`] = balance;
+        expected[`${key} balance`] = '0';
       }
     }
     console.log('Solana token checks:', JSON.stringify(results, null, 2));

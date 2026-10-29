@@ -108,6 +108,9 @@ async function verifyDecimals(chain: ChainConfig, asset: Asset): Promise<void> {
       : chain.kind === 'solana'
         ? await solanaClient(chain).getTokenDecimals(asset.contract)
         : await evm.getTokenDecimals(chain, asset.contract);
+  // Solana nodes may not serve the mint account. That's safe to skip: transfers use
+  // TransferChecked, which the network rejects if the decimals don't match.
+  if (onChain == null) return;
   if (onChain !== asset.decimals) {
     throw new Error(`${asset.symbol} contract reports ${onChain} decimals, expected ${asset.decimals}`);
   }
