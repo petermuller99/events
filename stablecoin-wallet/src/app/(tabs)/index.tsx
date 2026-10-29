@@ -189,7 +189,7 @@ export default function Home() {
             <ListRow
               key={`${chain.id}:${asset.id}`}
               last={i === coins.length - 1}
-              left={<TokenBadge symbol={asset.symbol} />}
+              left={<TokenBadge symbol={asset.symbol} chain={chain.id} />}
               title={asset.symbol}
               subtitle={chain.name}
               right={<Text style={s.coinAmount}>${formatDollars(balance, asset.decimals)}</Text>}

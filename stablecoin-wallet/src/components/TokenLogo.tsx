@@ -1,7 +1,10 @@
+import type { JSX } from 'react';
+import { View } from 'react-native';
 import Svg, { Circle, G, Path } from 'react-native-svg';
+import type { ChainId } from '../lib/config';
 
-// Official USDT (Tether) and USDC (Circle) marks, from the CC0 cryptocurrency-icons
-// set, using each issuer's brand colour.
+// Official USDT (Tether) and USDC (Circle) marks and network logos, from the CC0
+// cryptocurrency-icons set, using each issuer's brand colour.
 
 function Usdt({ size }: { size: number }) {
   return (
@@ -27,6 +30,78 @@ function Usdc({ size }: { size: number }) {
   );
 }
 
-export function TokenLogo({ symbol, size = 42 }: { symbol: 'USDT' | 'USDC'; size?: number }) {
-  return symbol === 'USDT' ? <Usdt size={size} /> : <Usdc size={size} />;
+function Ethereum({ size }: { size: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 32 32">
+      <Circle cx={16} cy={16} r={16} fill="#627EEA" />
+      <G fill="#FFF">
+        <Path fillOpacity={0.602} d="M16.498 4v8.87l7.497 3.35z" />
+        <Path d="M16.498 4L9 16.22l7.498-3.35z" />
+        <Path fillOpacity={0.602} d="M16.498 21.968v6.027L24 17.616z" />
+        <Path d="M16.498 27.995v-6.028L9 17.616z" />
+        <Path fillOpacity={0.2} d="M16.498 20.573l7.497-4.353-7.497-3.348z" />
+        <Path fillOpacity={0.602} d="M9 16.22l7.498 4.353v-7.701z" />
+      </G>
+    </Svg>
+  );
+}
+
+function Bnb({ size }: { size: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 32 32">
+      <Circle cx={16} cy={16} r={16} fill="#F3BA2F" />
+      <Path
+        fill="#FFF"
+        d="M12.116 14.404L16 10.52l3.886 3.886 2.26-2.26L16 6l-6.144 6.144 2.26 2.26zM6 16l2.26-2.26L10.52 16l-2.26 2.26L6 16zm6.116 1.596L16 21.48l3.886-3.886 2.26 2.259L16 26l-6.144-6.144-.003-.003 2.263-2.257zM21.48 16l2.26-2.26L26 16l-2.26 2.26L21.48 16zm-3.188-.002h.002V16L16 18.294l-2.291-2.29-.004-.004.004-.003.401-.402.195-.195L16 13.706l2.293 2.293z"
+      />
+    </Svg>
+  );
+}
+
+function Tron({ size }: { size: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 32 32">
+      <Circle cx={16} cy={16} r={16} fill="#EF0027" />
+      <Path
+        fill="#FFF"
+        d="M21.932 9.913L7.5 7.257l7.595 19.112 10.583-12.894-3.746-3.562zm-.232 1.17l2.208 2.099-6.038 1.093 3.83-3.192zm-5.142 2.973l-6.364-5.278 10.402 1.914-4.038 3.364zm-.453.934l-1.038 8.58L9.472 9.487l6.633 5.502zm.96.455l6.687-1.21-7.67 9.343.983-8.133z"
+      />
+    </Svg>
+  );
+}
+
+const CHAIN_LOGOS: Record<ChainId, (p: { size: number }) => JSX.Element> = {
+  ethereum: Ethereum,
+  bsc: Bnb,
+  tron: Tron,
+};
+
+export function ChainLogo({ chain, size = 20 }: { chain: ChainId; size?: number }) {
+  const Logo = CHAIN_LOGOS[chain];
+  return <Logo size={size} />;
+}
+
+/** Coin logo with a small network badge in the corner, e.g. USDT with a Tron badge. */
+export function TokenLogo({ symbol, chain, size = 42 }: { symbol: 'USDT' | 'USDC'; chain?: ChainId; size?: number }) {
+  const badge = Math.round(size * 0.46);
+  return (
+    <View style={{ width: size, height: size }}>
+      {symbol === 'USDT' ? <Usdt size={size} /> : <Usdc size={size} />}
+      {chain ? (
+        <View
+          style={{
+            position: 'absolute',
+            right: -4,
+            bottom: -4,
+            borderRadius: badge,
+            borderWidth: 2,
+            borderColor: '#fff',
+            backgroundColor: '#fff',
+          }}
+        >
+          <ChainLogo chain={chain} size={badge} />
+        </View>
+      ) : null}
+    </View>
+  );
 }
