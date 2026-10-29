@@ -1,6 +1,6 @@
-# Builds an installable Android test APK of the stablecoin wallet and publishes
+# Builds an installable Android test APK of Pearl and publishes
 # it as a GitHub pre-release, so it can be downloaded straight to a phone.
-name: Stablecoin wallet Android build
+name: Pearl Android build
 
 on:
   push:
@@ -53,22 +53,22 @@ jobs:
         run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a --no-daemon
 
       - name: Rename APK
-        run: cp android/app/build/outputs/apk/release/app-release.apk stablecoin-wallet-test.apk
+        run: cp android/app/build/outputs/apk/release/app-release.apk pearl-test.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: stablecoin-wallet-apk
-          path: stablecoin-wallet/stablecoin-wallet-test.apk
+          name: pearl-apk
+          path: stablecoin-wallet/pearl-test.apk
 
       - name: Publish pre-release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: wallet-test-${{ github.run_number }}
-          name: Stablecoin Wallet test build ${{ github.run_number }}
+          tag_name: pearl-test-${{ github.run_number }}
+          name: Pearl test build ${{ github.run_number }}
           target_commitish: ${{ github.sha }}
           prerelease: true
-          files: stablecoin-wallet/stablecoin-wallet-test.apk
+          files: stablecoin-wallet/pearl-test.apk
           body: |
-            Test build of the stablecoin wallet for Android (testnet by default).
-            Open this page on your Android phone, tap **stablecoin-wallet-test.apk**, then install it.
+            Test build of Pearl for Android (test money by default).
+            Open this page on your Android phone, tap **pearl-test.apk**, then install it.
             Not audited: do not use with significant real funds.

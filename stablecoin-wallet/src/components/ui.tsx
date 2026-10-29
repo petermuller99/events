@@ -23,14 +23,19 @@ export const colors = {
   honeyTop: '#FFD55B',
   honeyBottom: '#FFA62B',
   honey: '#FFBE45',
-  bg: '#FFF7E6',
+  honeyShadow: '#E8901F',
+  bg: '#FFF8EA',
   card: '#FFFFFF',
   text: '#3B2209',
   muted: '#7A5A3A',
   caramel: '#A05A14',
-  border: '#F1DDB5',
+  border: '#F3E4C6',
   sky: '#7EC4F0',
+  skyLight: '#E1F2FD',
+  skyDark: '#1F6FA3',
   pink: '#F09CA9',
+  pinkLight: '#FDE6EA',
+  pinkDark: '#B4475A',
   danger: '#B3261E',
   dangerBg: '#FDE8E6',
   warning: '#7A4A00',
@@ -118,12 +123,15 @@ export function Screen({
   refreshControl,
   scroll = true,
   honey = false,
+  tab = false,
 }: {
   children: ReactNode;
   refreshControl?: ReactElement<RefreshControlProps>;
   scroll?: boolean;
   /** Full honey-gradient background, for brand moments like onboarding. */
   honey?: boolean;
+  /** Tab screens: no navigation header above, tab bar below. */
+  tab?: boolean;
 }) {
   const body = scroll ? (
     <ScrollView
@@ -146,7 +154,7 @@ export function Screen({
     );
   }
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
+    <SafeAreaView style={styles.safe} edges={tab ? ['top', 'left', 'right'] : ['bottom', 'left', 'right']}>
       {body}
     </SafeAreaView>
   );
@@ -208,7 +216,15 @@ export function Button({
           {label}
         </LinearGradient>
       ) : (
-        <View style={styles.buttonFill}>{label}</View>
+        <View
+          style={[
+            styles.buttonFill,
+            variant === 'dark' && styles.buttonFill_dark,
+            variant === 'danger' && styles.buttonFill_danger,
+          ]}
+        >
+          {label}
+        </View>
       )}
     </Pressable>
   );
@@ -342,23 +358,28 @@ export const styles = StyleSheet.create({
   link: { color: colors.caramel, fontWeight: '600', fontSize: 15 },
   card: {
     backgroundColor: colors.card,
-    borderRadius: 22,
+    borderRadius: 24,
     padding: 16,
     gap: 10,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
-    shadowColor: colors.caramel,
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
   },
-  button: { minHeight: 52, borderRadius: 999, overflow: 'hidden' },
-  buttonFill: { flex: 1, minHeight: 52, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20 },
-  button_primary: {},
-  button_dark: { backgroundColor: colors.text },
-  button_secondary: { backgroundColor: colors.card, borderWidth: 1.5, borderColor: colors.text },
-  button_danger: { backgroundColor: colors.dangerBg },
+  // Candy look: the darker bottom edge shows under the button face.
+  button: { minHeight: 56, borderRadius: 999, overflow: 'hidden', paddingBottom: 5 },
+  buttonFill: {
+    flex: 1,
+    minHeight: 51,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  buttonFill_dark: { backgroundColor: colors.text },
+  buttonFill_danger: { backgroundColor: colors.dangerBg },
+  button_primary: { backgroundColor: colors.honeyShadow },
+  button_dark: { backgroundColor: '#1E1004' },
+  button_secondary: { backgroundColor: colors.card, borderWidth: 2, borderColor: colors.text, paddingBottom: 0 },
+  button_danger: { backgroundColor: '#F4C7C2' },
   buttonDisabled: { opacity: 0.45 },
   buttonText: { fontSize: 17, fontWeight: '600', color: colors.text },
   banner: { borderRadius: 16, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },

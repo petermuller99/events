@@ -1,0 +1,243 @@
+import { getAddress } from 'ethers';
+import type { ChainConfig, ChainId, NetworkMode } from './config';
+import type { Trc20HistoryEntry, TronHistoryTx } from './tron';
+import { tronAddressFromEvmAddress } from './tron-address';
+import type { AssetId } from './wallet';
+
+// Activity = money in and out of this wallet. Items come from three places:
+//  - sends made in this app (recorded as pending, then tracked until confirmed),
+//  - chain data: TronGrid history on Tron, Transfer event logs on Ethereum/BSC,
+//  - native coin balance going up on Ethereum/BSC (logs don't cover plain ETH/BNB).
+
+export type ActivityStatus = 'pending' | 'confirmed' | 'failed';
+
+export interface ActivityItem {
+  id: string;
+  chain: ChainId;
+  assetId: AssetId;
+  symbol: string;
+  decimals: number;
+  direction: 'in' | 'out';
+  /** Base units, as a decimal string (JSON has no bigint). */
+  amount: string;
+  /** Who sent it (in) or who it went to (out), when known. */
+  counterparty?: string;
+  /** Empty for balance-change items, which have no single transaction. */
+  hash: string;
+  /** Milliseconds since epoch. */
+  timestamp: number;
+  status: ActivityStatus;
+}
+
+export interface ActivityState {
+  items: ActivityItem[];
+  /** Ethereum/BSC: last block already scanned for Transfer logs. */
+  cursors: Partial<Record<ChainId, number>>;
+  /** Ethereum/BSC: last seen native balance, to spot incoming ETH/BNB. */
+  nativeBalances: Partial<Record<ChainId, string>>;
+  /** Chains synced at least once. The first sync only sets a baseline and never notifies. */
+  initialized: Partial<Record<ChainId, boolean>>;
+}
+
+export const MAX_ITEMS = 300;
+
+export function emptyState(): ActivityState {
+  return { items: [], cursors: {}, nativeBalances: {}, initialized: {} };
+}
+
+export function activityId(chain: ChainId, hash: string, assetId: AssetId, direction: 'in' | 'out'): string {
+  return `${chain}:${hash.toLowerCase()}:${assetId}:${direction}`;
+}
+
+function sameAddress(chain: ChainConfig, a: string, b: string): boolean {
+  return chain.kind === 'tron' ? a === b : a.toLowerCase() === b.toLowerCase();
+}
+
+/** Tron v1 history returns either base58 (T…) or hex (41…) addresses. */
+export function normalizeTronAddress(address: string): string {
+  if (address.startsWith('T')) return address;
+  const hex = address.replace(/^0x/, '');
+  return tronAddressFromEvmAddress('0x' + (hex.length === 42 ? hex.slice(2) : hex));
+}
+
+export function fromTrc20History(
+  chain: ChainConfig,
+  owner: string,
+  entries: Trc20HistoryEntry[],
+): ActivityItem[] {
+  const out: ActivityItem[] = [];
+  for (const e of entries) {
+    if (e.type !== 'Transfer') continue;
+    const token = chain.tokens.find((t) => t.address === e.token_info?.address);
+    if (!token) continue;
+    const incoming = sameAddress(chain, e.to, owner);
+    const outgoing = sameAddress(chain, e.from, owner);
+    if (!incoming && !outgoing) continue;
+    const direction = incoming ? 'in' : 'out';
+    out.push({
+      id: activityId(chain.id, e.transaction_id, token.symbol, direction),
+      chain: chain.id,
+      assetId: token.symbol,
+      symbol: token.symbol,
+      decimals: token.decimals,
+      direction,
+      amount: BigInt(e.value).toString(),
+      counterparty: incoming ? e.from : e.to,
+      hash: e.transaction_id,
+      timestamp: e.block_timestamp,
+      status: 'confirmed',
+    });
+  }
+  return out;
+}
+
+export function fromTrxHistory(chain: ChainConfig, owner: string, txs: TronHistoryTx[]): ActivityItem[] {
+  const out: ActivityItem[] = [];
+  for (const tx of txs) {
+    const c = tx.raw_data?.contract?.[0];
+    if (c?.type !== 'TransferContract') continue;
+    const v = c.parameter.value;
+    if (!v.owner_address || !v.to_address || v.amount == null) continue;
+    const from = normalizeTronAddress(v.owner_address);
+    const to = normalizeTronAddress(v.to_address);
+    const incoming = to === owner;
+    if (!incoming && from !== owner) continue;
+    const direction = incoming ? 'in' : 'out';
+    const ok = (tx.ret?.[0]?.contractRet ?? 'SUCCESS') === 'SUCCESS';
+    out.push({
+      id: activityId(chain.id, tx.txID, 'native', direction),
+      chain: chain.id,
+      assetId: 'native',
+      symbol: chain.nativeSymbol,
+      decimals: chain.nativeDecimals,
+      direction,
+      amount: BigInt(v.amount).toString(),
+      counterparty: incoming ? from : to,
+      hash: tx.txID,
+      timestamp: tx.block_timestamp,
+      status: ok ? 'confirmed' : 'failed',
+    });
+  }
+  return out;
+}
+
+/** A Transfer(address,address,uint256) log, already decoded. */
+export interface TransferLog {
+  token: string;
+  from: string;
+  to: string;
+  value: bigint;
+  hash: string;
+  timestamp: number;
+}
+
+export function fromTransferLogs(chain: ChainConfig, owner: string, logs: TransferLog[]): ActivityItem[] {
+  const out: ActivityItem[] = [];
+  for (const log of logs) {
+    const token = chain.tokens.find((t) => t.address.toLowerCase() === log.token.toLowerCase());
+    if (!token) continue;
+    const incoming = sameAddress(chain, log.to, owner);
+    if (!incoming && !sameAddress(chain, log.from, owner)) continue;
+    const direction = incoming ? 'in' : 'out';
+    out.push({
+      id: activityId(chain.id, log.hash, token.symbol, direction),
+      chain: chain.id,
+      assetId: token.symbol,
+      symbol: token.symbol,
+      decimals: token.decimals,
+      direction,
+      amount: log.value.toString(),
+      counterparty: getAddress(incoming ? log.from : log.to),
+      hash: log.hash,
+      timestamp: log.timestamp,
+      status: 'confirmed',
+    });
+  }
+  return out;
+}
+
+/** A send just made in this app, before the chain has confirmed it. */
+export function pendingSend(
+  chain: ChainId,
+  asset: { id: AssetId; symbol: string; decimals: number },
+  to: string,
+  amount: bigint,
+  hash: string,
+): ActivityItem {
+  return {
+    id: activityId(chain, hash, asset.id, 'out'),
+    chain,
+    assetId: asset.id,
+    symbol: asset.symbol,
+    decimals: asset.decimals,
+    direction: 'out',
+    amount: amount.toString(),
+    counterparty: to,
+    hash,
+    timestamp: Date.now(),
+    status: 'pending',
+  };
+}
+
+export interface MergeResult {
+  state: ActivityState;
+  /** Items not seen before. */
+  added: ActivityItem[];
+  /** Existing items whose status changed. */
+  updated: ActivityItem[];
+}
+
+/**
+ * Adds or updates items by id. Chain data wins over local pending records, except
+ * that a confirmed or failed status never goes back to pending.
+ */
+export function mergeItems(state: ActivityState, incoming: ActivityItem[]): MergeResult {
+  const byId = new Map(state.items.map((i) => [i.id, i]));
+  const added: ActivityItem[] = [];
+  const updated: ActivityItem[] = [];
+  for (const item of incoming) {
+    const existing = byId.get(item.id);
+    if (!existing) {
+      byId.set(item.id, item);
+      added.push(item);
+      continue;
+    }
+    const status = item.status === 'pending' && existing.status !== 'pending' ? existing.status : item.status;
+    const merged = { ...existing, ...item, status, counterparty: item.counterparty ?? existing.counterparty };
+    if (merged.status !== existing.status) updated.push(merged);
+    byId.set(item.id, merged);
+  }
+  const items = [...byId.values()].sort((a, b) => b.timestamp - a.timestamp).slice(0, MAX_ITEMS);
+  return { state: { ...state, items }, added, updated };
+}
+
+export function setStatus(state: ActivityState, id: string, status: ActivityStatus): MergeResult {
+  const item = state.items.find((i) => i.id === id);
+  if (!item || item.status === status) return { state, added: [], updated: [] };
+  return mergeItems(state, [{ ...item, status }]);
+}
+
+/** Groups items (newest first) into "Today", "Yesterday" and dated sections. */
+export function groupByDay(items: ActivityItem[], now = new Date()): { title: string; items: ActivityItem[] }[] {
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const today = startOfDay(now);
+  const yesterday = today - 86_400_000;
+  const groups: { title: string; items: ActivityItem[] }[] = [];
+  for (const item of items) {
+    const day = startOfDay(new Date(item.timestamp));
+    const title =
+      day === today
+        ? 'Today'
+        : day === yesterday
+          ? 'Yesterday'
+          : new Date(day).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+    const last = groups[groups.length - 1];
+    if (last?.title === title) last.items.push(item);
+    else groups.push({ title, items: [item] });
+  }
+  return groups;
+}
+
+export function storageKey(mode: NetworkMode): string {
+  return `pearl.activity.${mode}.v1`;
+}

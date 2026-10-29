@@ -13,6 +13,25 @@ export interface TronTransaction {
   signature?: string[];
 }
 
+export interface Trc20HistoryEntry {
+  transaction_id: string;
+  token_info: { address: string; decimals: number; symbol: string };
+  block_timestamp: number;
+  from: string;
+  to: string;
+  type: string;
+  value: string;
+}
+
+export interface TronHistoryTx {
+  txID: string;
+  block_timestamp: number;
+  ret?: { contractRet?: string }[];
+  raw_data: {
+    contract: { type: string; parameter: { value: { amount?: number; owner_address?: string; to_address?: string } } }[];
+  };
+}
+
 /** Maximum TRX (in sun) a TRC-20 call may burn for energy before the network aborts it. */
 export const TRC20_FEE_LIMIT_SUN = 100_000_000n; // 100 TRX
 
@@ -29,14 +48,14 @@ export class TronClient {
   ) {}
 
   private async post<T>(path: string, body: unknown): Promise<T> {
+    return this.request<T>(path, { method: 'POST', body: JSON.stringify(body) });
+  }
+
+  private async request<T>(path: string, init: { method: 'GET' | 'POST'; body?: string }): Promise<T> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (this.apiKey) headers['TRON-PRO-API-KEY'] = this.apiKey;
-    const res = await this.fetchFn(`${this.apiUrl}${path}`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error(`Tron node error ${res.status} on ${path}`);
+    const res = await this.fetchFn(`${this.apiUrl}${path}`, { ...init, headers });
+    if (!res.ok) throw new Error(`Tron node error ${res.status} on ${path.split('?')[0]}`);
     const json = (await res.json()) as T & { Error?: string };
     if (json && typeof json === 'object' && 'Error' in json && json.Error) {
       throw new Error(`Tron node: ${json.Error}`);
@@ -180,6 +199,37 @@ export class TronClient {
       '18' + encodeVarint(amountSun),
     ]);
     return tx;
+  }
+
+  /** Latest TRC-20 transfers in or out of `address` for one token (TronGrid v1 API). */
+  async getTrc20History(address: string, token: string, limit = 50): Promise<Trc20HistoryEntry[]> {
+    const res = await this.request<{ data?: Trc20HistoryEntry[] }>(
+      `/v1/accounts/${address}/transactions/trc20?limit=${limit}&contract_address=${token}`,
+      { method: 'GET' },
+    );
+    return res.data ?? [];
+  }
+
+  /** Latest plain transactions of `address`, including TRX transfers (TronGrid v1 API). */
+  async getTrxHistory(address: string, limit = 50): Promise<TronHistoryTx[]> {
+    const res = await this.request<{ data?: TronHistoryTx[] }>(
+      `/v1/accounts/${address}/transactions?limit=${limit}&only_confirmed=true`,
+      { method: 'GET' },
+    );
+    return res.data ?? [];
+  }
+
+  /** 'pending' until the transaction is in a block. */
+  async getTransactionStatus(txid: string): Promise<'pending' | 'confirmed' | 'failed'> {
+    const info = await this.post<{
+      blockNumber?: number;
+      result?: string;
+      receipt?: { result?: string };
+    }>('/wallet/gettransactioninfobyid', { value: txid });
+    if (!info.blockNumber) return 'pending';
+    if (info.result === 'FAILED') return 'failed';
+    const r = info.receipt?.result;
+    return r && r !== 'SUCCESS' ? 'failed' : 'confirmed';
   }
 
   async broadcast(tx: TronTransaction): Promise<string> {

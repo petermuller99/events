@@ -1,5 +1,5 @@
 import { getAddress } from 'ethers';
-import { formatAmount, parseAmount, toInputAmount } from '../src/lib/amount';
+import { formatAmount, formatDollars, parseAmount, toInputAmount } from '../src/lib/amount';
 import { CHAINS, CHAIN_IDS } from '../src/lib/config';
 import { isValidTronAddress } from '../src/lib/tron-address';
 import { listAssets, validateRecipient } from '../src/lib/wallet';
@@ -67,6 +67,9 @@ describe('amounts', () => {
     expect(formatAmount(1_234_567_890_000n, 6)).toBe('1,234,567.89');
     expect(formatAmount(10n ** 18n, 18)).toBe('1');
     expect(formatAmount(1n, 18)).toBe('0');
+    expect(formatDollars(40_000_000n, 6)).toBe('40.00');
+    expect(formatDollars(125_505_000n, 6)).toBe('125.50');
+    expect(formatDollars(1_234_567n * 10n ** 18n, 18)).toBe('1,234,567.00');
     expect(toInputAmount(1_500_000n, 6)).toBe('1.5');
     expect(toInputAmount(2_000_000n, 6)).toBe('2');
   });

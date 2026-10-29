@@ -3,7 +3,10 @@ import { AppState } from 'react-native';
 import { authenticate, deviceHasScreenLock } from '../lib/auth';
 import type { NetworkMode } from '../lib/config';
 import { deriveKeys, normalizeMnemonic, type WalletKeys } from '../lib/keys';
+import { disableBackgroundCheck } from '../lib/background';
+import { clearWatch } from '../lib/prefs';
 import * as storage from '../lib/storage';
+import { clearActivity } from '../lib/sync';
 
 export type WalletStatus = 'loading' | 'empty' | 'locked' | 'unlocked';
 
@@ -92,6 +95,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const removeWallet = useCallback(async () => {
     await storage.deleteMnemonic();
+    // Forget the addresses and history too, so a removed wallet leaves nothing behind.
+    await Promise.all([clearActivity(), clearWatch(), disableBackgroundCheck()]).catch(() => {});
     setKeys(null);
     setStatus('empty');
   }, []);

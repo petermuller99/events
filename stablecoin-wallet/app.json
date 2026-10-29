@@ -2,7 +2,7 @@
   "expo": {
     "name": "Pearl",
     "slug": "stablecoin-wallet",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -18,7 +18,8 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.example.stablecoinwallet"
+      "package": "com.example.stablecoinwallet",
+      "versionCode": 2
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -41,7 +42,6 @@
       "expo-image",
       "expo-video",
       "expo-font",
-      "expo-splash-screen",
       [
         "expo-splash-screen",
         {
@@ -50,8 +50,15 @@
           "imageWidth": 200
         }
       ],
-      "expo-video",
-      "expo-font"
+      "expo-background-task",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#FFA62B",
+          "enableRemoteNotifications": false
+        }
+      ]
     ],
     "scheme": "stablecoinwallet"
   }

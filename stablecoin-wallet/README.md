@@ -16,6 +16,13 @@ gets its own `T…` address. The phrase uses standard BIP-44 paths (`m/44'/60'/0
 
 ## Features
 
+- **Activity:** every send and receive, grouped by day, with details and explorer links.
+  On Tron the full history comes from TronGrid. On Ethereum and BNB Chain, Pearl reads token
+  Transfer events from the time it is installed onward (older activity: block explorer link).
+- **Notifications:** "Money in!" when coins arrive, "It arrived ✓" when your send confirms,
+  and a warning if a send fails. They're instant while the app is open; when it's closed, a
+  background check runs about every 15 minutes (the OS decides exactly when). There's no
+  server: only your public addresses are stored, for the background check.
 - Pearl branding throughout: honey colours, the Fredoka font, a launch intro with her laugh
   (tap to skip) and stickers on key screens. Brand files live in `assets/brand/`.
 - Create a wallet (with a written-backup check) or import an existing phrase

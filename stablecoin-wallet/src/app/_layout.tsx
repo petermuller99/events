@@ -5,14 +5,16 @@ import {
   Fredoka_700Bold,
   useFonts,
 } from '@expo-google-fonts/fredoka';
-import { Stack } from 'expo-router';
+import * as Notifications from 'expo-notifications';
+import { router, Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { IntroDoneContext, LaunchIntro } from '../components/LaunchIntro';
 import { colors, fonts } from '../components/ui';
+import { ActivityProvider } from '../state/ActivityContext';
 import { useWallet, WalletProvider } from '../state/WalletContext';
 
 SplashScreen.preventAutoHideAsync();
@@ -38,19 +40,34 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <WalletProvider>
         <StatusBar style="dark" />
-        <IntroDoneContext.Provider value={introDone}>
-          <View style={{ flex: 1, backgroundColor: colors.bg }}>
-            <Routes />
-            {!introDone ? <LaunchIntro onDone={finishIntro} /> : null}
-          </View>
-        </IntroDoneContext.Provider>
+        <ActivityProvider>
+          <IntroDoneContext.Provider value={introDone}>
+            <View style={{ flex: 1, backgroundColor: colors.bg }}>
+              <Routes />
+              {!introDone ? <LaunchIntro onDone={finishIntro} /> : null}
+            </View>
+          </IntroDoneContext.Provider>
+        </ActivityProvider>
       </WalletProvider>
     </SafeAreaProvider>
   );
 }
 
+/** Tapping a Pearl notification opens Activity, after unlocking if needed. */
+function useOpenActivityFromNotification(unlocked: boolean) {
+  const response = Notifications.useLastNotificationResponse();
+  const handled = useRef<string | null>(null);
+  useEffect(() => {
+    const id = response?.notification.request.identifier;
+    if (!id || !unlocked || handled.current === id) return;
+    handled.current = id;
+    router.push('/activity');
+  }, [response, unlocked]);
+}
+
 function Routes() {
   const { status } = useWallet();
+  useOpenActivityFromNotification(status === 'unlocked');
   // The launch intro covers the screen while the wallet state loads.
   if (status === 'loading') return null;
   // Where to send someone who lands on a screen they can't use in this state.
@@ -69,10 +86,21 @@ function Routes() {
       }}
     >
       <Stack.Protected guard={status === 'unlocked'} redirectTo={home}>
-        <Stack.Screen name="index" options={{ title: 'pearl' }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="send" options={{ title: 'Send' }} />
         <Stack.Screen name="receive" options={{ title: 'Receive' }} />
-        <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+        <Stack.Screen
+          name="tx"
+          options={{
+            presentation: 'formSheet',
+            headerShown: false,
+            sheetAllowedDetents: [0.8],
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 32,
+          }}
+        />
+        <Stack.Screen name="phrase" options={{ title: 'Secret words' }} />
+        <Stack.Screen name="addresses" options={{ title: 'My addresses' }} />
       </Stack.Protected>
       <Stack.Protected guard={status === 'locked'} redirectTo={home}>
         <Stack.Screen name="unlock" options={{ headerShown: false }} />

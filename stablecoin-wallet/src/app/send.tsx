@@ -13,6 +13,7 @@ import {
   LinkButton,
   Row,
   Screen,
+  shortAddress,
   shortHash,
   Sticker,
   Text,
@@ -35,6 +36,9 @@ import {
   type SendResult,
   type TransferRequest,
 } from '../lib/wallet';
+import { SendTracker } from '../components/SendTracker';
+import { activityId, pendingSend } from '../lib/activity';
+import { useActivity } from '../state/ActivityContext';
 import { useUnlockedWallet } from '../state/WalletContext';
 
 type Step = 'form' | 'review' | 'done';
@@ -42,6 +46,7 @@ type Step = 'form' | 'review' | 'done';
 export default function Send() {
   const params = useLocalSearchParams<{ chain?: string; asset?: string }>();
   const { keys, mode } = useUnlockedWallet();
+  const activity = useActivity();
 
   const initialChain = CHAIN_IDS.includes(params.chain as ChainId) ? (params.chain as ChainId) : 'ethereum';
   const [chainId, setChainId] = useState<ChainId>(initialChain);
@@ -123,7 +128,10 @@ export default function Send() {
     if (!(await authenticate(`Send ${amountText} ${asset.symbol}`))) return;
     setBusy(true);
     try {
-      setResult(await sendTransfer(mode, keys, request, quote));
+      const sent = await sendTransfer(mode, keys, request, quote);
+      // Show it in Activity straight away; syncing then tracks it until it's confirmed.
+      await activity.recordSend(pendingSend(chainId, asset, request.to, request.amount, sent.hash)).catch(() => {});
+      setResult(sent);
       setStep('done');
     } catch (e) {
       setError(errorMessage(e));
@@ -133,16 +141,31 @@ export default function Send() {
   };
 
   if (step === 'done' && result) {
+    const tracked = activity.items.find((i) => i.id === activityId(chainId, result.hash, asset.id, 'out'));
+    const status = tracked?.status ?? 'pending';
+    const to = request ? shortAddress(request.to) : '';
     return (
       <Screen>
-        <View style={{ alignItems: 'center', gap: 6 }}>
-          <Sticker name="wheee" size={180} />
-          <Text style={{ fontSize: 28, fontWeight: '700' }}>Wheee, it’s on its way!</Text>
-          <Body muted>It usually arrives within a minute.</Body>
+        <View style={{ alignItems: 'center', gap: 4 }}>
+          <Sticker name={status === 'failed' ? 'hmm' : status === 'confirmed' ? 'laugh' : 'wheee'} size={170} />
+          <Text style={{ fontSize: 28, fontWeight: '700', textAlign: 'center' }}>
+            {status === 'failed'
+              ? 'Hmm, that didn’t go through'
+              : status === 'confirmed'
+                ? 'It arrived!'
+                : 'Wheee, it’s on its way!'}
+          </Text>
+          <Body muted>
+            {status === 'failed'
+              ? 'Your money is still in your wallet.'
+              : `${amountText} ${asset.symbol} to ${to} on ${chain.name}`}
+          </Body>
         </View>
+        {status !== 'failed' ? (
+          <SendTracker status={status} notify={activity.prefs.notifySends} />
+        ) : null}
         <Card>
-          <Row label="Sent" value={`${amountText} ${asset.symbol}`} />
-          <Row label="Network" value={`${chain.name} (${chain.standard})`} />
+          <Row label="Network" value={`${chain.name} (${asset.contract ? chain.standard : 'fee coin'})`} />
           <Row label="Transaction" value={shortHash(result.hash)} mono />
         </Card>
         <Button

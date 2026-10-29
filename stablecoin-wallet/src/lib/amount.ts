@@ -20,12 +20,20 @@ export function parseAmount(input: string, decimals: number): bigint {
   return amount;
 }
 
-/** Formats base units for display, trimming to `maxFraction` digits (rounded down). */
-export function formatAmount(amount: bigint, decimals: number, maxFraction = 6): string {
+/**
+ * Formats base units for display, trimming to `maxFraction` digits (rounded down)
+ * and padding to at least `minFraction` (2 for dollar amounts: "40.00").
+ */
+export function formatAmount(amount: bigint, decimals: number, maxFraction = 6, minFraction = 0): string {
   const [whole, fraction = ''] = formatUnits(amount, decimals).split('.');
-  const trimmed = fraction.slice(0, maxFraction).replace(/0+$/, '');
+  const trimmed = fraction.slice(0, maxFraction).replace(/0+$/, '').padEnd(minFraction, '0');
   const wholeGrouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   return trimmed ? `${wholeGrouped}.${trimmed}` : wholeGrouped;
+}
+
+/** Stablecoin amounts as dollars: always two decimals. */
+export function formatDollars(amount: bigint, decimals: number): string {
+  return formatAmount(amount, decimals, 2, 2);
 }
 
 /** Plain decimal string with no grouping, for pre-filling an input. */
