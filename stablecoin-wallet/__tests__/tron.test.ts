@@ -59,35 +59,93 @@ describe('signTronTransaction', () => {
 });
 
 describe('assertTransaction', () => {
-  const trxTx = () =>
-    buildRawTx({
-      type: 'TransferContract',
-      value: { owner_address: tronAddressToHex(FROM), to_address: tronAddressToHex(TO), amount: 1_500_000 },
-    }) as TronTransaction;
-  const expected = [tronAddressToHex(FROM), tronAddressToHex(TO), '18' + encodeVarint(1_500_000n)];
+  const trx = (value: Record<string, unknown> = {}, feeLimit?: number, extra?: Record<string, unknown>) =>
+    buildRawTx(
+      {
+        type: 'TransferContract',
+        value: { owner_address: tronAddressToHex(FROM), to_address: tronAddressToHex(TO), amount: 1_500_000, ...value },
+      },
+      feeLimit,
+      extra,
+    ) as TronTransaction;
+  const expected = { type: 'TransferContract' as const, owner: FROM, to: TO, amount: 1_500_000n };
+  const attacker = tronAddressFromEvmAddress('0x' + '66'.repeat(20));
+
+  const trc20 = (data: string, value: Record<string, unknown> = {}, feeLimit = 100_000_000) =>
+    buildRawTx(
+      {
+        type: 'TriggerSmartContract',
+        value: {
+          owner_address: tronAddressToHex(FROM),
+          contract_address: tronAddressToHex(USDT),
+          data,
+          ...value,
+        },
+      },
+      feeLimit,
+    ) as TronTransaction;
+  const params = encodeTransferParams(TO, 2_000_000n);
+  const expectedTrc20 = {
+    type: 'TriggerSmartContract' as const,
+    owner: FROM,
+    contract: USDT,
+    data: 'a9059cbb' + params,
+    maxFeeLimit: 100_000_000n,
+  };
 
   it('accepts a transaction matching the request', () => {
-    expect(() => assertTransaction(trxTx(), 'TransferContract', expected)).not.toThrow();
+    expect(() => assertTransaction(trx(), expected)).not.toThrow();
+    expect(() => assertTransaction(trc20('a9059cbb' + params), expectedTrc20)).not.toThrow();
   });
 
   it('rejects when txID does not hash from raw_data_hex', () => {
-    const tx = trxTx();
+    const tx = trx();
     tx.txID = '00'.repeat(32);
-    expect(() => assertTransaction(tx, 'TransferContract', expected)).toThrow('hash mismatch');
+    expect(() => assertTransaction(tx, expected)).toThrow('hash mismatch');
   });
 
   it('rejects a different recipient or amount', () => {
-    const other = tronAddressFromEvmAddress('0x' + '22'.repeat(20));
-    expect(() =>
-      assertTransaction(trxTx(), 'TransferContract', [tronAddressToHex(FROM), tronAddressToHex(other)]),
-    ).toThrow('does not match');
-    expect(() =>
-      assertTransaction(trxTx(), 'TransferContract', ['18' + encodeVarint(15_000_000n)]),
-    ).toThrow('does not match');
+    expect(() => assertTransaction(trx({ to_address: tronAddressToHex(attacker) }), expected)).toThrow('recipient');
+    expect(() => assertTransaction(trx({ amount: 15_000_000 }), expected)).toThrow('amount');
   });
 
   it('rejects the wrong contract type', () => {
-    expect(() => assertTransaction(trxTx(), 'TriggerSmartContract', [])).toThrow('Unexpected');
+    expect(() => assertTransaction(trx(), expectedTrc20)).toThrow('Unexpected');
+  });
+
+  it('ignores the node JSON: the signed bytes decide', () => {
+    // JSON claims a TRX transfer, the signed bytes are a TRC-20 call.
+    const tx = trc20('a9059cbb' + params);
+    tx.raw_data.contract = [{ type: 'TransferContract' }];
+    expect(() => assertTransaction(tx, expected)).toThrow('Unexpected');
+  });
+
+  it('rejects the expected values hidden in a memo next to a different contract', () => {
+    // The memo carries the expected owner, recipient and amount bytes; the contract pays the attacker.
+    const memo = tronAddressToHex(FROM) + tronAddressToHex(TO) + '18' + encodeVarint(1_500_000n);
+    const tx = trx({ to_address: tronAddressToHex(attacker) }, undefined, { data: memo });
+    expect(tx.raw_data_hex).toContain(tronAddressToHex(TO).toLowerCase());
+    expect(() => assertTransaction(tx, expected)).toThrow();
+  });
+
+  it('rejects TRC-20 call data with anything after the transfer arguments', () => {
+    const evil = 'a9059cbb' + encodeTransferParams(attacker, 10n ** 12n) + 'a9059cbb' + params;
+    expect(() => assertTransaction(trc20(evil), expectedTrc20)).toThrow('call data');
+  });
+
+  it('rejects TRX sent along with a TRC-20 call, or a fee limit above ours', () => {
+    expect(() => assertTransaction(trc20('a9059cbb' + params, { call_value: 5 }), expectedTrc20)).toThrow(
+      'call value',
+    );
+    expect(() => assertTransaction(trc20('a9059cbb' + params, {}, 1_000_000_000), expectedTrc20)).toThrow(
+      'fee limit',
+    );
+  });
+
+  it('rejects a transaction that stays valid too long', () => {
+    expect(() => assertTransaction(trx({}, undefined, { expiration: Date.now() + 24 * 3600_000 }), expected)).toThrow(
+      'expiry',
+    );
   });
 });
 

@@ -177,11 +177,13 @@ export class TronClient {
       throw new Error(`Could not build transfer: ${decodeMessage(res.result?.message)}`);
     }
     const tx = res.transaction;
-    assertTransaction(tx, 'TriggerSmartContract', [
-      tronAddressToHex(from),
-      tronAddressToHex(token),
-      TRANSFER_METHOD_ID + parameter,
-    ]);
+    assertTransaction(tx, {
+      type: 'TriggerSmartContract',
+      owner: from,
+      contract: token,
+      data: TRANSFER_METHOD_ID + parameter,
+      maxFeeLimit: TRC20_FEE_LIMIT_SUN,
+    });
     return tx;
   }
 
@@ -192,12 +194,7 @@ export class TronClient {
       amount: Number(amountSun),
       visible: true,
     });
-    assertTransaction(tx, 'TransferContract', [
-      tronAddressToHex(from),
-      tronAddressToHex(to),
-      // TransferContract.amount is protobuf field 3 (varint): tag byte 0x18.
-      '18' + encodeVarint(amountSun),
-    ]);
+    assertTransaction(tx, { type: 'TransferContract', owner: from, to, amount: amountSun });
     return tx;
   }
 
@@ -256,23 +253,130 @@ export function signTronTransaction(tx: TronTransaction, privateKey: string): Tr
   return { ...tx, signature: [sig.serialized.slice(2)] };
 }
 
+/** What a node-built transaction must do, checked against the bytes that get signed. */
+export type ExpectedTronTx =
+  | { type: 'TransferContract'; owner: string; to: string; amount: bigint }
+  | { type: 'TriggerSmartContract'; owner: string; contract: string; data: string; maxFeeLimit: bigint };
+
+/** Longest a node-built transaction may stay valid. Nodes set about 1 minute. */
+const MAX_EXPIRATION_MS = 60 * 60_000;
+
+const CONTRACT_TYPES = { TransferContract: 1, TriggerSmartContract: 31 } as const;
+
 /**
- * The node builds the transaction, so before signing check that the signed bytes
- * (raw_data_hex) hash to txID and contain the addresses and amount we asked for.
- * This stops a faulty or malicious node from getting a different transfer signed.
+ * The node builds the transaction, so before signing decode the signed bytes
+ * (raw_data_hex) and check every field: exactly one contract of the expected type,
+ * with exactly our owner, recipient or token, amount or call data, no memo or extra
+ * fields, a bounded fee limit and expiry. This stops a faulty or malicious node from
+ * getting a different transaction signed. The node's JSON is never trusted.
  */
-export function assertTransaction(tx: TronTransaction, type: string, mustContain: string[]): void {
+export function assertTransaction(tx: TronTransaction, expected: ExpectedTronTx, now = Date.now()): void {
   if (!tx?.txID || !tx.raw_data_hex) throw new Error('Tron node returned no transaction');
-  if (sha256('0x' + tx.raw_data_hex).slice(2) !== tx.txID.toLowerCase()) {
+  const rawHex = tx.raw_data_hex.toLowerCase();
+  if (!/^([0-9a-f]{2})+$/.test(rawHex) || sha256('0x' + rawHex).slice(2) !== tx.txID.toLowerCase()) {
     throw new Error('Transaction hash mismatch');
   }
-  if (tx.raw_data.contract?.length !== 1 || tx.raw_data.contract[0].type !== type) {
+  const mismatch = (what: string) => new Error(`Transaction does not match request (${what})`);
+
+  // Transaction.raw: 1 ref_block_bytes, 3 ref_block_num, 4 ref_block_hash, 8 expiration,
+  // 11 contract, 14 timestamp, 18 fee_limit. Anything else (memo, auths, scripts) is refused.
+  const raw = decodeFields(hexToBytes(rawHex), { 1: 2, 3: 0, 4: 2, 8: 0, 11: 2, 14: 0, 18: 0 });
+  const contracts = raw.get(11) ?? [];
+  if (contracts.length !== 1) throw new Error('Unexpected transaction type');
+  const expiration = one(raw, 8, 'expiration') as bigint | undefined;
+  if (expiration == null || expiration > BigInt(now + MAX_EXPIRATION_MS)) throw mismatch('expiry');
+  const feeLimit = (one(raw, 18, 'fee limit') as bigint | undefined) ?? 0n;
+
+  // Contract: 1 type, 2 parameter (Any), 5 permission id (must be the owner's, 0).
+  const contract = decodeFields(contracts[0] as Uint8Array, { 1: 0, 2: 2, 5: 0 });
+  if (one(contract, 1, 'type') !== BigInt(CONTRACT_TYPES[expected.type])) {
     throw new Error('Unexpected transaction type');
   }
-  const raw = tx.raw_data_hex.toLowerCase();
-  for (const part of mustContain) {
-    if (!raw.includes(part.toLowerCase())) throw new Error('Transaction does not match request');
+  if (((one(contract, 5, 'permission') as bigint | undefined) ?? 0n) !== 0n) throw mismatch('permission');
+  const any = decodeFields(one(contract, 2, 'parameter') as Uint8Array, { 1: 2, 2: 2 });
+  if (toUtf8String(one(any, 1, 'type url') as Uint8Array) !== `type.googleapis.com/protocol.${expected.type}`) {
+    throw new Error('Unexpected transaction type');
   }
+  const value = one(any, 2, 'parameter value') as Uint8Array;
+  const owner = (f: Map<number, (bigint | Uint8Array)[]>) => bytesToHex(one(f, 1, 'owner') as Uint8Array);
+
+  if (expected.type === 'TransferContract') {
+    // TransferContract: 1 owner_address, 2 to_address, 3 amount.
+    const f = decodeFields(value, { 1: 2, 2: 2, 3: 0 });
+    if (owner(f) !== tronAddressToHex(expected.owner).toLowerCase()) throw mismatch('sender');
+    if (bytesToHex(one(f, 2, 'recipient') as Uint8Array) !== tronAddressToHex(expected.to).toLowerCase()) {
+      throw mismatch('recipient');
+    }
+    if (one(f, 3, 'amount') !== expected.amount) throw mismatch('amount');
+    if (feeLimit !== 0n) throw mismatch('fee limit');
+  } else {
+    // TriggerSmartContract: 1 owner_address, 2 contract_address, 3 call_value, 4 data,
+    // 5 call_token_value, 6 token_id. No TRX or other tokens may be sent along.
+    const f = decodeFields(value, { 1: 2, 2: 2, 3: 0, 4: 2, 5: 0, 6: 0 });
+    if (owner(f) !== tronAddressToHex(expected.owner).toLowerCase()) throw mismatch('sender');
+    if (bytesToHex(one(f, 2, 'token') as Uint8Array) !== tronAddressToHex(expected.contract).toLowerCase()) {
+      throw mismatch('token');
+    }
+    if (bytesToHex(one(f, 4, 'call data') as Uint8Array) !== expected.data.toLowerCase()) throw mismatch('call data');
+    for (const n of [3, 5, 6]) {
+      if (((one(f, n, 'call value') as bigint | undefined) ?? 0n) !== 0n) throw mismatch('call value');
+    }
+    if (feeLimit <= 0n || feeLimit > expected.maxFeeLimit) throw mismatch('fee limit');
+  }
+}
+
+/**
+ * Decodes one protobuf message into field number -> values, allowing only the listed
+ * fields with their wire type (0 varint, 2 length-delimited). Throws on anything else.
+ */
+function decodeFields(bytes: Uint8Array, allowed: Record<number, 0 | 2>): Map<number, (bigint | Uint8Array)[]> {
+  const fields = new Map<number, (bigint | Uint8Array)[]>();
+  let pos = 0;
+  const varint = () => {
+    let result = 0n;
+    for (let shift = 0n; shift < 70n; shift += 7n) {
+      if (pos >= bytes.length) throw new Error('Malformed transaction');
+      const b = bytes[pos++];
+      result |= BigInt(b & 0x7f) << shift;
+      if (!(b & 0x80)) return result;
+    }
+    throw new Error('Malformed transaction');
+  };
+  while (pos < bytes.length) {
+    const key = varint();
+    const field = Number(key >> 3n);
+    const wire = Number(key & 7n);
+    if (allowed[field] !== wire) throw new Error('Transaction has unexpected fields');
+    let val: bigint | Uint8Array;
+    if (wire === 0) {
+      val = varint();
+    } else {
+      const len = Number(varint());
+      if (pos + len > bytes.length) throw new Error('Malformed transaction');
+      val = bytes.subarray(pos, pos + len);
+      pos += len;
+    }
+    fields.set(field, [...(fields.get(field) ?? []), val]);
+  }
+  return fields;
+}
+
+/** The single value of a field (undefined if absent); a repeated field is refused. */
+function one(fields: Map<number, (bigint | Uint8Array)[]>, n: number, what: string): bigint | Uint8Array | undefined {
+  const v = fields.get(n);
+  if (v && v.length > 1) throw new Error(`Transaction has a repeated ${what}`);
+  return v?.[0];
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  return out;
+}
+
+function bytesToHex(bytes: Uint8Array | undefined): string {
+  if (!bytes) return '';
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 export function encodeVarint(value: bigint): string {

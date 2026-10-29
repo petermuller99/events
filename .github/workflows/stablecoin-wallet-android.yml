@@ -55,6 +55,14 @@ jobs:
           SOLANA_LIVE: '1'
         run: npx jest __tests__/solana.live.test.ts
 
+      # Has real Tron nodes build transfers (nothing is signed or sent) and checks the
+      # app's strict pre-sign check accepts them. Informational, like the Solana check.
+      - name: Tron network check
+        continue-on-error: true
+        env:
+          TRON_LIVE: '1'
+        run: npx jest __tests__/tron.live.test.ts
+
       - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install
 

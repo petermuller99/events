@@ -7,7 +7,13 @@ export { tronUtils };
 export const TEST_PHRASE = 'test test test test test test test test test test test junk';
 
 /** Serialises a transaction JSON (hex addresses) the way a Tron node would. */
-export function buildRawTx(contract: { type: string; value: Record<string, unknown> }, feeLimit?: number) {
+export function buildRawTx(
+  contract: { type: string; value: Record<string, unknown> },
+  feeLimit?: number,
+  extra: Record<string, unknown> = {},
+) {
+  // Like a node: valid for one minute from now.
+  const now = Date.now();
   const tx = {
     visible: false,
     txID: '',
@@ -16,9 +22,10 @@ export function buildRawTx(contract: { type: string; value: Record<string, unkno
       contract: [{ parameter: { value: contract.value, type_url: `type.googleapis.com/protocol.${contract.type}` }, type: contract.type }],
       ref_block_bytes: 'a1b2',
       ref_block_hash: '0123456789abcdef',
-      expiration: 1_800_000_000_000,
-      timestamp: 1_799_999_940_000,
+      expiration: now + 60_000,
+      timestamp: now,
       ...(feeLimit ? { fee_limit: feeLimit } : {}),
+      ...extra,
     },
   };
   const pb = tronUtils.transaction.txJsonToPb(tx);
