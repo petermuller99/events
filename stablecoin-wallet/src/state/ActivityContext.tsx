@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AppState } from 'react-native';
+import { Celebration, type CelebrationEvent } from '../components/Celebration';
 import type { ActivityItem } from '../lib/activity';
 import { disableBackgroundCheck, enableBackgroundCheck } from '../lib/background';
 import { notifyOutcome, requestNotificationPermission } from '../lib/notify';
@@ -37,6 +38,7 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
   const [refreshing, setRefreshing] = useState(false);
   const [prefs, setPrefsState] = useState<Prefs>(defaultPrefs);
   const [active, setActive] = useState(AppState.currentState === 'active');
+  const [celebration, setCelebration] = useState<CelebrationEvent | null>(null);
   const prefsRef = useRef(prefs);
 
   const addresses = useMemo(() => (keys ? { evm: keys.evm.address, tron: keys.tron.address } : null), [keys]);
@@ -76,6 +78,10 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
     try {
       const outcome = await syncActivity(mode, addresses);
       setItems(outcome.items);
+      // While the app is open, money arriving or a send landing gets a little celebration.
+      const arrived = outcome.settled.filter((i) => i.status === 'confirmed');
+      if (outcome.received.length) setCelebration({ kind: 'in', items: outcome.received });
+      else if (arrived.length) setCelebration({ kind: 'arrived', items: arrived });
       await notifyOutcome(mode, outcome, prefsRef.current).catch(() => {});
     } catch {
       // Network trouble: keep showing what we have.
@@ -116,7 +122,12 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
     () => ({ items, refreshing, prefs, refresh, recordSend, setPrefs }),
     [items, refreshing, prefs, refresh, recordSend, setPrefs],
   );
-  return <ActivityContext.Provider value={value}>{children}</ActivityContext.Provider>;
+  return (
+    <ActivityContext.Provider value={value}>
+      {children}
+      <Celebration mode={mode} event={celebration} onClose={() => setCelebration(null)} />
+    </ActivityContext.Provider>
+  );
 }
 
 export function useActivity(): ActivityContextValue {

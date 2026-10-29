@@ -30,7 +30,7 @@ export default function Settings() {
     if (!allowed) {
       Alert.alert(
         'Notifications are off',
-        'Pearl can’t show notifications until you allow them in your phone’s settings.',
+        'Pearl Wallet can’t show notifications until you allow them in your phone’s settings.',
         [
           { text: 'Not now', style: 'cancel' },
           { text: 'Open settings', onPress: () => Linking.openSettings() },
@@ -99,7 +99,7 @@ export default function Settings() {
         />
       </ListCard>
       <Text style={s.note}>
-        Instant while Pearl is open. When it’s closed, your phone checks about every 15 minutes.
+        Instant while Pearl Wallet is open. When it’s closed, your phone checks about every 15 minutes.
       </Text>
 
       <Text style={s.section}>Wallet</Text>
@@ -118,7 +118,7 @@ export default function Settings() {
 
       <View style={s.footer}>
         <Sticker name="hello" size={90} />
-        <Text style={s.note}>Pearl · version {Constants.expoConfig?.version ?? '–'}</Text>
+        <Text style={s.note}>Pearl Wallet · version {Constants.expoConfig?.version ?? '–'}</Text>
       </View>
     </Screen>
   );

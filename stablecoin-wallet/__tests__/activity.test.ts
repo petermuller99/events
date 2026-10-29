@@ -119,7 +119,7 @@ describe('describeOutcome', () => {
 
   it('summarises many payments and respects switched-off settings', () => {
     const many = { items: [], received: [got(1), got(2), got(3), got(4)], settled: [sent('confirmed')] };
-    expect(describeOutcome('testnet', many, defaultPrefs)[0].body).toBe('You got 4 payments. Open Pearl to see them.');
+    expect(describeOutcome('testnet', many, defaultPrefs)[0].body).toBe('You got 4 payments. Open Pearl Wallet to see them.');
     expect(describeOutcome('testnet', many, { notifyReceived: false, notifySends: false })).toEqual([]);
   });
 });

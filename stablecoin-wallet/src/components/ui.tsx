@@ -313,6 +313,38 @@ export function Chips<T extends string>({
   );
 }
 
+/** Big equal-width choice buttons, e.g. picking a network. */
+export function Tiles<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: { value: T; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <View style={styles.tiles}>
+      {options.map((o) => {
+        const selected = o.value === value;
+        return (
+          <Pressable
+            key={o.value}
+            accessibilityRole="radio"
+            accessibilityState={{ selected }}
+            onPress={() => onChange(o.value)}
+            style={[styles.tile, selected && styles.tileSelected]}
+          >
+            <Text style={[styles.tileText, selected && { color: colors.honeyTop }]} numberOfLines={1}>
+              {o.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 export function Row({ label, value, mono }: { label: string; value: ReactNode; mono?: boolean }) {
   return (
     <View style={styles.row}>
@@ -412,6 +444,21 @@ export const styles = StyleSheet.create({
   chipSelected: { backgroundColor: colors.text, borderColor: colors.text },
   chipText: { fontSize: 15, fontWeight: '500' },
   chipTextSelected: { color: colors.honeyTop },
+  tiles: { flexDirection: 'row', gap: 10 },
+  tile: {
+    flex: 1,
+    minHeight: 54,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.card,
+    borderWidth: 2,
+    borderColor: colors.border,
+    borderBottomWidth: 5,
+    paddingHorizontal: 6,
+  },
+  tileSelected: { backgroundColor: colors.text, borderColor: colors.text, borderBottomColor: '#1E1004' },
+  tileText: { fontSize: 15, fontWeight: '600' },
   row: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
   rowLabel: { fontSize: 14, color: colors.muted },
   rowValue: { fontSize: 14, flexShrink: 1, textAlign: 'right' },

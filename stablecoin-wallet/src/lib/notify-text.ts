@@ -17,7 +17,7 @@ export interface NotificationText {
 export function describeOutcome(mode: NetworkMode, outcome: SyncOutcome, prefs: Prefs): NotificationText[] {
   const out: NotificationText[] = [];
   if (prefs.notifyReceived && outcome.received.length > 3) {
-    out.push({ title: 'Money in! 🎉', body: `You got ${outcome.received.length} payments. Open Pearl to see them.` });
+    out.push({ title: 'Money in! 🎉', body: `You got ${outcome.received.length} payments. Open Pearl Wallet to see them.` });
   } else if (prefs.notifyReceived) {
     for (const i of outcome.received) {
       out.push({ title: 'Money in! 🎉', body: `You got ${amountOf(i)} on ${getChain(mode, i.chain).name}.` });

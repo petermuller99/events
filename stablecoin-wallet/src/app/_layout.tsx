@@ -100,6 +100,7 @@ function Routes() {
           }}
         />
         <Stack.Screen name="phrase" options={{ title: 'Secret words' }} />
+        <Stack.Screen name="goal" options={{ title: 'Savings goal' }} />
         <Stack.Screen name="addresses" options={{ title: 'My addresses' }} />
       </Stack.Protected>
       <Stack.Protected guard={status === 'locked'} redirectTo={home}>

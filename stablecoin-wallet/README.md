@@ -1,6 +1,6 @@
-# Pearl — her first wallet
+# Pearl Wallet — her first wallet
 
-Pearl is a simple non-custodial mobile wallet (iOS and Android, built with Expo) for USDT and USDC on:
+Pearl Wallet is a simple non-custodial mobile wallet (iOS and Android, built with Expo) for USDT and USDC on:
 
 | Network | Standard | Tokens | Fee coin |
 |---|---|---|---|

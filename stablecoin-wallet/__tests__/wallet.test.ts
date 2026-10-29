@@ -74,3 +74,13 @@ describe('amounts', () => {
     expect(toInputAmount(2_000_000n, 6)).toBe('2');
   });
 });
+
+describe('savings goal', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { goalPercent } = require('../src/lib/goal') as typeof import('../src/lib/goal');
+  it('shows progress as a whole percentage, capped at 100', () => {
+    expect(goalPercent({ name: 'bike', target: 500 }, 375.75)).toBe(75);
+    expect(goalPercent({ name: 'bike', target: 500 }, 900)).toBe(100);
+    expect(goalPercent({ name: 'bike', target: 0 }, 10)).toBe(0);
+  });
+});

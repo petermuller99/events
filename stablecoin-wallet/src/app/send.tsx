@@ -1,7 +1,7 @@
 import * as Clipboard from 'expo-clipboard';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Linking, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import {
   Banner,
   Body,
@@ -10,6 +10,7 @@ import {
   Chips,
   colors,
   Field,
+  fonts,
   LinkButton,
   Row,
   Screen,
@@ -17,6 +18,7 @@ import {
   shortHash,
   Sticker,
   Text,
+  Tiles,
 } from '../components/ui';
 import { formatAmount, parseAmount, toInputAmount } from '../lib/amount';
 import { authenticate } from '../lib/auth';
@@ -215,50 +217,73 @@ export default function Send() {
 
   return (
     <Screen>
-      <Body muted>Network</Body>
-      <Chips
+      <Text style={st.label}>Network</Text>
+      <Tiles
         value={chainId}
         onChange={selectChain}
-        options={CHAIN_IDS.map((id) => ({ value: id, label: getChain(mode, id).name }))}
+        options={CHAIN_IDS.map((id) => ({ value: id, label: SHORT_NAMES[id] }))}
       />
-      <Body muted>Asset</Body>
-      <Chips
-        value={asset.id}
-        onChange={(id) => {
-          setAssetId(id);
-          setError(null);
-        }}
-        options={assets.map((a) => ({ value: a.id, label: a.symbol }))}
-      />
-      <Text style={{ color: colors.muted }}>
-        Balance: {balance != null ? `${formatAmount(balance, asset.decimals)} ${asset.symbol}` : balances?.error ?? '…'}
-      </Text>
+      {assets.length > 1 ? (
+        <Chips
+          value={asset.id}
+          onChange={(id) => {
+            setAssetId(id);
+            setError(null);
+          }}
+          options={assets.map((a) => ({ value: a.id, label: a.contract ? a.symbol : `${a.symbol} (fee coin)` }))}
+        />
+      ) : null}
 
       <Field
-        label={`Recipient ${chain.kind === 'tron' ? 'Tron address (T…)' : 'address (0x…)'}`}
+        label="To"
         value={to}
         onChangeText={setTo}
         onBlur={() => setTouched(true)}
-        placeholder={chain.kind === 'tron' ? 'T…' : '0x…'}
+        placeholder={chain.kind === 'tron' ? 'Tron address (T…)' : 'Address (0x…)'}
         error={recipientError}
         right={<LinkButton title="Paste" onPress={pasteAddress} />}
       />
-      <Field
-        label={`Amount (${asset.symbol})`}
-        value={amountText}
-        onChangeText={(t) => {
-          setAmountText(t);
-          setError(null);
-        }}
-        keyboardType="decimal-pad"
-        placeholder="0.00"
-        right={
-          // Max is only offered for tokens: for the native coin the fee has to come out of it too.
-          asset.contract && balance ? (
-            <LinkButton title="Max" onPress={() => setAmountText(toInputAmount(balance, asset.decimals))} />
-          ) : null
-        }
-      />
+
+      <Text style={st.label}>Amount</Text>
+      <View style={st.amountCard}>
+        <TextInput
+          // Stablecoins show as dollars: the "$" is part of the text, stripped again on input.
+          value={asset.contract && amountText ? `$${amountText}` : amountText}
+          onChangeText={(t) => {
+            setAmountText(t.replace(/[^0-9.,]/g, ''));
+            setError(null);
+          }}
+          keyboardType="decimal-pad"
+          placeholder={asset.contract ? '$0.00' : `0 ${asset.symbol}`}
+          placeholderTextColor={colors.border}
+          style={st.amountInput}
+          accessibilityLabel={`Amount in ${asset.symbol}`}
+        />
+        <Text style={st.have}>
+          {balance != null
+            ? `You have ${asset.contract ? '$' : ''}${formatAmount(balance, asset.decimals, asset.contract ? 2 : 6, asset.contract ? 2 : 0)} ${asset.symbol}`
+            : balances?.error ?? '…'}
+        </Text>
+      </View>
+      {/* Max only for tokens: for the native coin the fee has to come out of it too. */}
+      {asset.contract ? (
+        <View style={st.quick}>
+          {['1', '5', '10'].map((v) => (
+            <Pressable key={v} style={st.quickButton} onPress={() => setAmountText(v)} accessibilityRole="button">
+              <Text style={st.quickText}>${v}</Text>
+            </Pressable>
+          ))}
+          {balance ? (
+            <Pressable
+              style={st.quickButton}
+              onPress={() => setAmountText(toInputAmount(balance, asset.decimals))}
+              accessibilityRole="button"
+            >
+              <Text style={st.quickText}>Max</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
       {asset.contract ? (
         <Body muted>
           Sending {asset.symbol} on {chain.name} needs a little {chain.nativeSymbol} in this wallet for the network fee.
@@ -269,3 +294,30 @@ export default function Send() {
     </Screen>
   );
 }
+
+const SHORT_NAMES: Record<ChainId, string> = { ethereum: 'Ethereum', bsc: 'BNB Chain', tron: 'Tron' };
+
+const st = StyleSheet.create({
+  label: { fontSize: 15, fontWeight: '600', marginBottom: -6 },
+  amountCard: {
+    backgroundColor: colors.card,
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: colors.border,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  amountInput: {
+    fontSize: 40,
+    fontFamily: fonts.bold,
+    color: colors.text,
+    alignSelf: 'stretch',
+    textAlign: 'center',
+    paddingVertical: 0,
+  },
+  have: { fontSize: 13, color: colors.muted },
+  quick: { flexDirection: 'row', gap: 8, justifyContent: 'center' },
+  quickButton: { backgroundColor: colors.skyLight, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 8 },
+  quickText: { fontSize: 15, fontWeight: '600', color: colors.skyDark },
+});
