@@ -13,6 +13,17 @@ export interface Prefs {
 const PREFS_KEY = 'pearl.prefs.v1';
 const WATCH_KEY = 'pearl.watch.v1';
 const ASKED_KEY = 'pearl.askedNotifications.v1';
+const LAST_CHECK_KEY = 'pearl.lastBackgroundCheck.v1';
+
+/** When the OS last ran the background check, so Settings can show it's working. */
+export async function loadLastBackgroundCheck(): Promise<number | null> {
+  const raw = await AsyncStorage.getItem(LAST_CHECK_KEY).catch(() => null);
+  return raw ? Number(raw) : null;
+}
+
+export function saveLastBackgroundCheck(at: number): Promise<void> {
+  return AsyncStorage.setItem(LAST_CHECK_KEY, String(at));
+}
 
 export const defaultPrefs: Prefs = { notifyReceived: true, notifySends: true };
 
@@ -49,7 +60,7 @@ export function saveWatch(watch: WatchState): Promise<void> {
 }
 
 export function clearWatch(): Promise<void> {
-  return AsyncStorage.multiRemove([WATCH_KEY, ASKED_KEY]);
+  return AsyncStorage.multiRemove([WATCH_KEY, ASKED_KEY, LAST_CHECK_KEY]);
 }
 
 export async function hasAskedForNotifications(): Promise<boolean> {

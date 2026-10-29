@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router/js-tabs';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GearIcon, HomeIcon, ListIcon } from '../../components/icons';
 import { colors, fonts } from '../../components/ui';
 
@@ -23,6 +24,8 @@ function TabIcon({ focused, children }: { focused: boolean; children: ReactNode 
 }
 
 export default function TabsLayout() {
+  // Leave room for Android's on-screen Back/Home buttons (or the gesture bar) below the tabs.
+  const { bottom } = useSafeAreaInsets();
   return (
     <Tabs
       screenOptions={{
@@ -30,7 +33,14 @@ export default function TabsLayout() {
         tabBarActiveTintColor: colors.text,
         tabBarInactiveTintColor: colors.muted,
         tabBarLabelStyle: { fontFamily: fonts.semibold, fontSize: 12 },
-        tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.border, borderTopWidth: 2, height: 76, paddingTop: 8 },
+        tabBarStyle: {
+          backgroundColor: colors.card,
+          borderTopColor: colors.border,
+          borderTopWidth: 2,
+          height: 68 + bottom,
+          paddingTop: 8,
+          paddingBottom: bottom + 6,
+        },
         sceneStyle: { backgroundColor: colors.bg },
       }}
     >

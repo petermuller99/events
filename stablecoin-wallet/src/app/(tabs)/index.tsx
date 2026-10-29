@@ -123,7 +123,7 @@ export default function Home() {
       <View style={s.balanceWrap}>
         <View style={s.balanceShadow}>
           <LinearGradient colors={honeyGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.balance}>
-            <Text style={s.balanceLabel}>My honey pot</Text>
+            <Text style={s.balanceLabel}>My money</Text>
             <Text style={s.balanceAmount} adjustsFontSizeToFit numberOfLines={1}>
               {rows ? `$${formatDollars(total, 18)}` : '…'}
             </Text>

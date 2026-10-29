@@ -1,7 +1,7 @@
 import * as BackgroundTask from 'expo-background-task';
 import * as TaskManager from 'expo-task-manager';
 import { notifyOutcome } from './notify';
-import { loadPrefs, loadWatch } from './prefs';
+import { loadPrefs, loadWatch, saveLastBackgroundCheck } from './prefs';
 import { syncActivity } from './sync';
 
 // Checks for new money while Pearl is closed. The OS decides when this runs:
@@ -12,6 +12,7 @@ const TASK = 'pearl-activity-check';
 // Must run at app start (imported from index.ts) so the OS can wake the task headlessly.
 TaskManager.defineTask(TASK, async () => {
   try {
+    await saveLastBackgroundCheck(Date.now()).catch(() => {});
     const [watch, prefs] = await Promise.all([loadWatch(), loadPrefs()]);
     if (!watch || (!prefs.notifyReceived && !prefs.notifySends)) return BackgroundTask.BackgroundTaskResult.Success;
     const outcome = await syncActivity(watch.mode, watch.addresses);

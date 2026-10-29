@@ -1,11 +1,13 @@
 import Constants from 'expo-constants';
-import { router } from 'expo-router';
-import { Alert, Linking, StyleSheet, Switch, View } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { Alert, Linking, Platform, StyleSheet, Switch, View } from 'react-native';
 import { Chevron } from '../../components/icons';
 import { ListCard, ListRow } from '../../components/money';
 import { Button, colors, Screen, Sticker, Text } from '../../components/ui';
 import { authenticate } from '../../lib/auth';
-import type { Prefs } from '../../lib/prefs';
+import { openBatterySettings } from '../../lib/battery';
+import { loadLastBackgroundCheck, type Prefs } from '../../lib/prefs';
 import { useActivity } from '../../state/ActivityContext';
 import { useUnlockedWallet } from '../../state/WalletContext';
 
@@ -21,9 +23,24 @@ function Toggle({ value, onChange, label }: { value: boolean; onChange: (v: bool
   );
 }
 
+function timeAgo(at: number): string {
+  const minutes = Math.round((Date.now() - at) / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  return hours < 24 ? `${hours} h ago` : new Date(at).toLocaleDateString();
+}
+
 export default function Settings() {
   const { mode, setMode, lock, removeWallet } = useUnlockedWallet();
   const { prefs, setPrefs } = useActivity();
+  const [lastCheck, setLastCheck] = useState<number | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadLastBackgroundCheck().then(setLastCheck);
+    }, []),
+  );
 
   const updatePrefs = async (next: Prefs) => {
     const allowed = await setPrefs(next);
@@ -98,9 +115,22 @@ export default function Settings() {
           }
         />
       </ListCard>
+      {Platform.OS === 'android' ? (
+        <ListCard>
+          <ListRow
+            last
+            title="Let it check in the background"
+            subtitle="Stop battery saver from pausing Pearl Wallet"
+            right={chevron}
+            onPress={openBatterySettings}
+          />
+        </ListCard>
+      ) : null}
       <Text style={s.note}>
-        Instant while Pearl Wallet is open. When it’s closed, your phone checks about every 15 minutes.
+        Instant while Pearl Wallet is open, and for 10 minutes after you leave it. After that, your phone checks
+        about every 15 minutes, or less often if battery saver is on.
       </Text>
+      <Text style={s.note}>Last background check: {lastCheck ? timeAgo(lastCheck) : 'not yet'}</Text>
 
       <Text style={s.section}>Wallet</Text>
       <ListCard>
