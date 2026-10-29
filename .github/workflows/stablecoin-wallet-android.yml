@@ -1,5 +1,5 @@
-# Builds an installable Android test APK of Pearl and publishes
-# it as a GitHub pre-release, so it can be downloaded straight to a phone.
+# Builds an installable Android test APK of Pearl Wallet, checks that it starts on
+# an emulator, then publishes it as a GitHub pre-release for download on a phone.
 name: Pearl Wallet Android build
 
 on:
@@ -14,6 +14,9 @@ permissions:
 concurrency:
   group: stablecoin-wallet-android-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  APP_ID: com.example.stablecoinwallet
 
 jobs:
   build:
@@ -48,9 +51,10 @@ jobs:
 
       # Signed with the template's shared debug key: fine for testing, and later
       # builds install over earlier ones. Store releases need a private key.
+      # x86_64 is included so the emulator smoke test can run the same APK.
       - name: Build APK
         working-directory: stablecoin-wallet/android
-        run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a --no-daemon
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a,x86_64 --no-daemon
 
       - name: Rename APK
         run: cp android/app/build/outputs/apk/release/app-release.apk pearl-wallet-test.apk
@@ -60,6 +64,54 @@ jobs:
           name: pearl-wallet-apk
           path: stablecoin-wallet/pearl-wallet-test.apk
 
+  # Installs the APK on an emulator and fails if the app crashes on launch,
+  # printing the crash from the device log.
+  smoke-test:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pearl-wallet-apk
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Launch on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: |
+            adb install -r pearl-wallet-test.apk
+            adb logcat -c
+            adb shell monkey -p $APP_ID -c android.intent.category.LAUNCHER 1
+            sleep 30
+            adb logcat -d > logcat.txt
+            echo "----- crash and JS errors -----"; grep -E -A 40 "FATAL EXCEPTION|ReactNativeJS.*(Error|error)|Fatal signal" logcat.txt | head -300 || true
+            adb shell pidof $APP_ID > /dev/null && echo "APP_RUNNING" || (echo "APP_NOT_RUNNING"; exit 1)
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: emulator-logcat
+          path: logcat.txt
+
+  release:
+    needs: smoke-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pearl-wallet-apk
+
       - name: Publish pre-release
         uses: softprops/action-gh-release@v2
         with:
@@ -67,7 +119,7 @@ jobs:
           name: Pearl Wallet test build ${{ github.run_number }}
           target_commitish: ${{ github.sha }}
           prerelease: true
-          files: stablecoin-wallet/pearl-wallet-test.apk
+          files: pearl-wallet-test.apk
           body: |
             Test build of Pearl Wallet for Android (test money by default).
             Open this page on your Android phone, tap **pearl-wallet-test.apk**, then install it.
