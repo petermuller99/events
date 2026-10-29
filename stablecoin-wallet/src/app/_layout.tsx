@@ -15,6 +15,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { IntroDoneContext, LaunchIntro } from '../components/LaunchIntro';
 import { colors, fonts } from '../components/ui';
 import { ActivityProvider } from '../state/ActivityContext';
+import { TipsProvider } from '../state/TipsContext';
 import { useWallet, WalletProvider } from '../state/WalletContext';
 
 SplashScreen.preventAutoHideAsync();
@@ -42,10 +43,12 @@ export default function RootLayout() {
         <StatusBar style="dark" />
         <ActivityProvider>
           <IntroDoneContext.Provider value={introDone}>
-            <View style={{ flex: 1, backgroundColor: colors.bg }}>
-              <Routes />
-              {!introDone ? <LaunchIntro onDone={finishIntro} /> : null}
-            </View>
+            <TipsProvider>
+              <View style={{ flex: 1, backgroundColor: colors.bg }}>
+                <Routes />
+                {!introDone ? <LaunchIntro onDone={finishIntro} /> : null}
+              </View>
+            </TipsProvider>
           </IntroDoneContext.Provider>
         </ActivityProvider>
       </WalletProvider>
@@ -101,6 +104,7 @@ function Routes() {
         />
         <Stack.Screen name="phrase" options={{ title: 'Secret words' }} />
         <Stack.Screen name="goal" options={{ title: 'Savings goal' }} />
+        <Stack.Screen name="tips" options={{ title: 'My tip cards' }} />
         <Stack.Screen name="addresses" options={{ title: 'My addresses' }} />
       </Stack.Protected>
       <Stack.Protected guard={status === 'locked'} redirectTo={home}>

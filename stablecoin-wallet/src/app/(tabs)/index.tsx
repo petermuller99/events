@@ -5,12 +5,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ActivityItem } from '../../lib/activity';
 import { goalPercent, loadGoal, type SavingsGoal } from '../../lib/goal';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
-import { ArrowDown, ArrowUp } from '../../components/icons';
+import { ArrowDown, ArrowUp, Chevron } from '../../components/icons';
 import { ListCard, ListRow, TokenBadge } from '../../components/money';
 import { Banner, brandImages, colors, honeyGradient, Screen, Sticker, Text } from '../../components/ui';
 import { formatAmount, formatDollars } from '../../lib/amount';
 import { fetchAllBalances, type ChainBalances } from '../../lib/wallet';
 import { useActivity } from '../../state/ActivityContext';
+import { useTips } from '../../state/TipsContext';
 import { useUnlockedWallet } from '../../state/WalletContext';
 
 const LAUGH = require('../../../assets/brand/stickers/laugh.png');
@@ -48,6 +49,7 @@ function totalStablecoins(rows: ChainBalances[]): bigint {
 export default function Home() {
   const { keys, mode, hasScreenLock } = useUnlockedWallet();
   const activity = useActivity();
+  const tips = useTips();
   const [rows, setRows] = useState<ChainBalances[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [goal, setGoal] = useState<SavingsGoal | null>(null);
@@ -146,6 +148,25 @@ export default function Home() {
         </View>
         <Image source={brandImages.mark} style={s.balanceSticker} contentFit="contain" />
       </View>
+
+      {tips.today ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Today's tip: ${tips.today.title}. See all tip cards`}
+          onPress={() => router.push('/tips')}
+          style={({ pressed }) => [s.tip, pressed && { transform: [{ translateY: 2 }], borderBottomWidth: 3 }]}
+        >
+          <Text style={s.tipEmoji}>{tips.today.emoji}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={s.tipLabel}>Today’s tip</Text>
+            <Text style={s.tipTitle} numberOfLines={1}>
+              {tips.today.title}
+            </Text>
+            <Text style={s.tipCount}>⭐ {tips.state.collected.length} / 10 collected · tap to see all</Text>
+          </View>
+          <Chevron color={colors.text} />
+        </Pressable>
+      ) : null}
 
       <View style={s.actions}>
         <Pressable
@@ -264,6 +285,23 @@ const s = StyleSheet.create({
   goalPercent: { position: 'absolute', right: 8, fontSize: 12, fontWeight: '700' },
   goalLink: { fontSize: 14, fontWeight: '600', textDecorationLine: 'underline', marginTop: 2 },
   balanceSticker: { position: 'absolute', right: 8, top: -26, width: 100, height: 100 },
+  tip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#ECE4FB',
+    borderRadius: 24,
+    borderWidth: 2.5,
+    borderColor: colors.text,
+    borderBottomWidth: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginTop: 4,
+  },
+  tipEmoji: { fontSize: 34, lineHeight: 42 },
+  tipLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase' },
+  tipTitle: { fontSize: 16, fontWeight: '700' },
+  tipCount: { fontSize: 12.5, fontWeight: '600', color: '#5A3A1A' },
   actions: { flexDirection: 'row', gap: 12, marginTop: 4 },
   action: { flex: 1, borderRadius: 24, paddingVertical: 14, alignItems: 'center', gap: 6, borderBottomWidth: 5 },
   send: { backgroundColor: colors.pinkLight, borderBottomColor: '#F2BCC6' },
