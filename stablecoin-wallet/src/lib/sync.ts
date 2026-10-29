@@ -3,6 +3,7 @@ import { id as keccakId, zeroPadValue } from 'ethers';
 import {
   activityId,
   emptyState,
+  fromSolanaTx,
   fromTransferLogs,
   fromTrc20History,
   fromTrxHistory,
@@ -15,11 +16,14 @@ import {
 } from './activity';
 import { CHAIN_IDS, getChain, TRONGRID_API_KEY, type ChainConfig, type ChainId, type NetworkMode } from './config';
 import * as evm from './evm';
+import { associatedTokenAddress, SolanaClient } from './solana';
 import { TronClient } from './tron';
 
 export interface WatchedAddresses {
   evm: string;
   tron: string;
+  /** Missing in watch state saved by versions before Solana support. */
+  solana?: string;
 }
 
 export interface SyncOutcome {
@@ -36,7 +40,15 @@ const MAX_CHUNKS = 10;
 /** On the very first sync, look back this many blocks. */
 const INITIAL_LOOKBACK = 2000;
 /** Give up on a pending send after this long; it was dropped and the money never left. */
-const PENDING_TIMEOUT_MS: Record<'evm' | 'tron', number> = { evm: 6 * 3600_000, tron: 15 * 60_000 };
+const PENDING_TIMEOUT_MS: Record<ChainConfig['kind'], number> = {
+  evm: 6 * 3600_000,
+  tron: 15 * 60_000,
+  // A Solana transaction expires with its blockhash after about a minute.
+  solana: 5 * 60_000,
+};
+/** Solana: how many recent signatures to look at per address, and how many to remember. */
+const SOLANA_SIGNATURES = 10;
+const SOLANA_SEEN_MAX = 200;
 const TRANSFER_TOPIC = keccakId('Transfer(address,address,uint256)');
 
 export async function loadActivity(mode: NetworkMode): Promise<ActivityState> {
@@ -74,6 +86,30 @@ interface ChainSync {
   items: ActivityItem[];
   cursor?: number;
   nativeBalance?: string;
+  seen?: string[];
+}
+
+const solanaClients = new Map<string, SolanaClient>();
+function solana(chain: ChainConfig): SolanaClient {
+  let c = solanaClients.get(chain.rpcUrl);
+  if (!c) solanaClients.set(chain.rpcUrl, (c = new SolanaClient(chain.rpcUrl)));
+  return c;
+}
+
+/**
+ * Solana has no "transfers for this address" query. Token transfers are recorded on
+ * the token accounts, so look at recent signatures for the wallet and for each of its
+ * token accounts, then read only the transactions not seen before.
+ */
+async function syncSolana(chain: ChainConfig, owner: string, state: ActivityState): Promise<ChainSync> {
+  const client = solana(chain);
+  const watched = [owner, ...chain.tokens.map((t) => associatedTokenAddress(owner, t.address))];
+  const lists = await Promise.all(watched.map((a) => client.getSignatures(a, SOLANA_SIGNATURES)));
+  const seen = new Set(state.seen?.solana ?? []);
+  const fresh = [...new Set(lists.flat().filter((s) => !s.err).map((s) => s.signature))].filter((s) => !seen.has(s));
+  const txs = await Promise.all(fresh.map((sig) => client.getParsedTransaction(sig)));
+  const items = fresh.flatMap((sig, i) => (txs[i] ? fromSolanaTx(chain, owner, sig, txs[i]!) : []));
+  return { items, seen: [...fresh, ...(state.seen?.solana ?? [])].slice(0, SOLANA_SEEN_MAX) };
 }
 
 async function syncTron(chain: ChainConfig, owner: string): Promise<ChainSync> {
@@ -150,7 +186,9 @@ async function checkPending(chain: ChainConfig, item: ActivityItem): Promise<Act
   const status =
     chain.kind === 'tron'
       ? await tron(chain).getTransactionStatus(item.hash)
-      : await evm.getProvider(chain).getTransactionReceipt(item.hash).then((r) =>
+      : chain.kind === 'solana'
+        ? await solana(chain).getStatus(item.hash)
+        : await evm.getProvider(chain).getTransactionReceipt(item.hash).then((r) =>
           r == null ? 'pending' : r.status === 1 ? 'confirmed' : 'failed',
         );
   if (status === 'pending' && Date.now() - item.timestamp > PENDING_TIMEOUT_MS[chain.kind]) return 'failed';
@@ -175,9 +213,16 @@ async function doSync(mode: NetworkMode, addresses: WatchedAddresses): Promise<S
   const results = await Promise.all(
     CHAIN_IDS.map(async (id): Promise<[ChainId, ChainSync | null]> => {
       const chain = getChain(mode, id);
-      const owner = id === 'tron' ? addresses.tron : addresses.evm;
+      const owner = id === 'tron' ? addresses.tron : id === 'solana' ? addresses.solana : addresses.evm;
+      if (!owner) return [id, null];
       try {
-        return [id, chain.kind === 'tron' ? await syncTron(chain, owner) : await syncEvm(chain, owner, state)];
+        const result =
+          chain.kind === 'tron'
+            ? await syncTron(chain, owner)
+            : chain.kind === 'solana'
+              ? await syncSolana(chain, owner, state)
+              : await syncEvm(chain, owner, state);
+        return [id, result];
       } catch {
         return [id, null];
       }
@@ -198,6 +243,7 @@ async function doSync(mode: NetworkMode, addresses: WatchedAddresses): Promise<S
       nativeBalances:
         result.nativeBalance != null ? { ...state.nativeBalances, [id]: result.nativeBalance } : state.nativeBalances,
       initialized: { ...state.initialized, [id]: true },
+      seen: result.seen ? { ...state.seen, [id]: result.seen } : state.seen,
     };
   }
 

@@ -10,11 +10,25 @@ import {
 } from './config';
 import * as evm from './evm';
 import type { WalletKeys } from './keys';
+import {
+  associatedTokenAddress,
+  checkSolanaAddress,
+  compileMessage,
+  createTokenAccountInstruction,
+  priorityFeeInstructions,
+  PRIORITY_FEE,
+  RENT_EXEMPT_MINIMUM,
+  SIGNATURE_FEE,
+  signTransaction as signSolanaTransaction,
+  SolanaClient,
+  transferSolInstruction,
+  transferTokenInstruction,
+} from './solana';
 import { signTronTransaction, TronClient } from './tron';
 import { isValidTronAddress } from './tron-address';
 
 // Chain-agnostic API used by the screens. Everything below dispatches to the
-// EVM implementation (Ethereum, BSC) or the Tron one.
+// EVM implementation (Ethereum, BSC), the Tron one or the Solana one.
 
 export type AssetId = 'native' | TokenSymbol;
 
@@ -34,12 +48,16 @@ export interface ChainBalances {
   error?: string;
 }
 
+function accountFor(keys: WalletKeys, chain: ChainId) {
+  return chain === 'tron' ? keys.tron : chain === 'solana' ? keys.solana : keys.evm;
+}
+
 export function addressFor(keys: WalletKeys, chain: ChainId): string {
-  return chain === 'tron' ? keys.tron.address : keys.evm.address;
+  return accountFor(keys, chain).address;
 }
 
 function privateKeyFor(keys: WalletKeys, chain: ChainId): string {
-  return chain === 'tron' ? keys.tron.privateKey : keys.evm.privateKey;
+  return accountFor(keys, chain).privateKey;
 }
 
 export function listAssets(mode: NetworkMode, chainId: ChainId): Asset[] {
@@ -70,6 +88,13 @@ function tronClient(chain: ChainConfig): TronClient {
   return client;
 }
 
+const solanaClients = new Map<string, SolanaClient>();
+export function solanaClient(chain: ChainConfig): SolanaClient {
+  let client = solanaClients.get(chain.rpcUrl);
+  if (!client) solanaClients.set(chain.rpcUrl, (client = new SolanaClient(chain.rpcUrl)));
+  return client;
+}
+
 // Guards against a wrong decimals value in config, which would make amounts off by
 // orders of magnitude. Checked once per contract per app session.
 const verifiedDecimals = new Set<string>();
@@ -80,7 +105,9 @@ async function verifyDecimals(chain: ChainConfig, asset: Asset): Promise<void> {
   const onChain =
     chain.kind === 'tron'
       ? await tronClient(chain).getTokenDecimals(asset.contract)
-      : await evm.getTokenDecimals(chain, asset.contract);
+      : chain.kind === 'solana'
+        ? await solanaClient(chain).getTokenDecimals(asset.contract)
+        : await evm.getTokenDecimals(chain, asset.contract);
   if (onChain !== asset.decimals) {
     throw new Error(`${asset.symbol} contract reports ${onChain} decimals, expected ${asset.decimals}`);
   }
@@ -92,6 +119,10 @@ async function getBalance(chain: ChainConfig, asset: Asset, owner: string): Prom
   if (chain.kind === 'tron') {
     const client = tronClient(chain);
     return asset.contract ? client.getTokenBalance(owner, asset.contract) : client.getTrxBalance(owner);
+  }
+  if (chain.kind === 'solana') {
+    const client = solanaClient(chain);
+    return asset.contract ? client.getTokenBalance(owner, asset.contract) : client.getSolBalance(owner);
   }
   return asset.contract
     ? evm.getTokenBalance(chain, asset.contract, owner)
@@ -122,19 +153,35 @@ export function fetchAllBalances(mode: NetworkMode, keys: WalletKeys): Promise<C
 export function validateRecipient(chainId: ChainId, to: string, ownAddress?: string): string | null {
   const value = to.trim();
   if (!value) return 'Enter a recipient address';
-  if (chainId === 'tron') {
+  if (chainId === 'solana') {
+    if (value.startsWith('0x')) return 'This is an Ethereum/BSC address. Choose that network instead.';
+    const check = checkSolanaAddress(value);
+    if (check === 'invalid') {
+      return /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(value)
+        ? 'This is a Tron address. Choose the Tron network instead.'
+        : 'Not a valid Solana address';
+    }
+    if (check === 'program') return 'This is a token or program account, not a wallet address';
+  } else if (chainId === 'tron') {
     if (value.startsWith('0x')) {
       return 'This is an Ethereum/BSC address. TRC-20 tokens can only go to a Tron address (starts with T).';
     }
-    if (!isValidTronAddress(value)) return 'Not a valid Tron address';
+    if (!isValidTronAddress(value)) {
+      return checkSolanaAddress(value) === 'ok'
+        ? 'This is a Solana address. Choose the Solana network instead.'
+        : 'Not a valid Tron address';
+    }
   } else {
-    if (value.startsWith('T')) {
+    if (isValidTronAddress(value)) {
       return 'This is a Tron address. Choose the Tron network to send TRC-20 tokens.';
+    }
+    if (!value.startsWith('0x') && checkSolanaAddress(value) === 'ok') {
+      return 'This is a Solana address. Choose the Solana network instead.';
     }
     // isAddress accepts all-lowercase, and verifies the checksum on mixed-case input.
     if (!isAddress(value)) return 'Not a valid address (check for typos)';
   }
-  if (ownAddress && value.toLowerCase() === ownAddress.toLowerCase()) {
+  if (ownAddress && (chainId === 'solana' ? value === ownAddress : value.toLowerCase() === ownAddress.toLowerCase())) {
     return 'This is your own address';
   }
   return null;
@@ -155,6 +202,8 @@ export interface FeeQuote {
   /** Native coin needed in total: fee, plus the amount when sending the native coin. */
   nativeRequired: bigint;
   notes: string[];
+  /** Solana: one-time cost of creating the recipient's token account, included in fee. */
+  setupFee?: bigint;
   /** Opaque data passed back to sendTransfer. */
   evmQuote?: evm.EvmFeeQuote;
 }
@@ -177,6 +226,8 @@ export async function quoteTransfer(
     const nativeRequired = evmQuote.maxFee + (req.asset.contract ? 0n : req.amount);
     return { fee: evmQuote.maxFee, isMaximum: true, nativeBalance, nativeRequired, notes: [], evmQuote };
   }
+
+  if (chain.kind === 'solana') return quoteSolana(chain, from, to, req);
 
   const client = tronClient(chain);
   const [params, resources, nativeBalance, recipientActive] = await Promise.all([
@@ -209,6 +260,56 @@ export async function quoteTransfer(
   return { fee, isMaximum: false, nativeBalance, nativeRequired, notes };
 }
 
+async function quoteSolana(chain: ChainConfig, from: string, to: string, req: TransferRequest): Promise<FeeQuote> {
+  const client = solanaClient(chain);
+  const nativeBalance = await client.getSolBalance(from);
+  let fee = SIGNATURE_FEE + PRIORITY_FEE;
+  let setupFee = 0n;
+  if (req.asset.contract) {
+    // The recipient needs a token account for this coin; the sender pays to create it once.
+    if (!(await client.accountExists(associatedTokenAddress(to, req.asset.contract)))) {
+      setupFee = await client.getTokenAccountRent();
+      fee += setupFee;
+    }
+    return { fee, isMaximum: false, nativeBalance, nativeRequired: fee, notes: [], setupFee };
+  }
+  // Plain SOL: Solana requires every account to keep a minimum balance.
+  if (req.amount < RENT_EXEMPT_MINIMUM && !(await client.accountExists(to))) {
+    throw new Error('This address has never been used. The first SOL sent to it must be at least 0.00089 SOL.');
+  }
+  const left = nativeBalance - req.amount - fee;
+  if (left > 0n && left < RENT_EXEMPT_MINIMUM) {
+    throw new Error('Leave at least 0.00089 SOL in your wallet, or send a little less.');
+  }
+  return { fee, isMaximum: false, nativeBalance, nativeRequired: fee + req.amount, notes: [] };
+}
+
+async function sendSolana(chain: ChainConfig, from: string, privateKey: string, to: string, req: TransferRequest) {
+  const client = solanaClient(chain);
+  const instructions = [...priorityFeeInstructions()];
+  if (req.asset.contract) {
+    const mint = req.asset.contract;
+    // CreateIdempotent does nothing if the recipient's token account already exists.
+    instructions.push(
+      createTokenAccountInstruction(from, to, mint),
+      transferTokenInstruction(
+        associatedTokenAddress(from, mint),
+        mint,
+        associatedTokenAddress(to, mint),
+        from,
+        req.amount,
+        req.asset.decimals,
+      ),
+    );
+  } else {
+    instructions.push(transferSolInstruction(from, to, req.amount));
+  }
+  const message = compileMessage(from, instructions, await client.getLatestBlockhash());
+  const { wire, signature } = signSolanaTransaction(message, privateKey);
+  await client.sendTransaction(wire);
+  return signature;
+}
+
 export interface SendResult {
   hash: string;
   explorerUrl: string;
@@ -234,6 +335,8 @@ export async function sendTransfer(
       { from, to, amount: req.amount, token: req.asset.contract },
       quote.evmQuote,
     );
+  } else if (chain.kind === 'solana') {
+    hash = await sendSolana(chain, from, privateKey, to, req);
   } else {
     const client = tronClient(chain);
     const unsigned = req.asset.contract

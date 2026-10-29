@@ -1,10 +1,10 @@
-export type ChainId = 'ethereum' | 'bsc' | 'tron';
+export type ChainId = 'ethereum' | 'bsc' | 'tron' | 'solana';
 export type NetworkMode = 'testnet' | 'mainnet';
 export type TokenSymbol = 'USDT' | 'USDC';
 
 export interface TokenConfig {
   symbol: TokenSymbol;
-  /** EVM: 0x… checksummed address. Tron: T… base58 address. */
+  /** EVM: 0x… checksummed address. Tron: T… base58 address. Solana: base58 mint address. */
   address: string;
   /** Expected decimals. Checked against the contract at runtime before use. */
   decimals: number;
@@ -13,8 +13,8 @@ export interface TokenConfig {
 export interface ChainConfig {
   id: ChainId;
   name: string;
-  standard: 'ERC-20' | 'BEP-20' | 'TRC-20';
-  kind: 'evm' | 'tron';
+  standard: 'ERC-20' | 'BEP-20' | 'TRC-20' | 'SPL';
+  kind: 'evm' | 'tron' | 'solana';
   nativeSymbol: string;
   nativeDecimals: number;
   rpcUrl: string;
@@ -28,7 +28,7 @@ export interface ChainConfig {
   tokens: TokenConfig[];
 }
 
-export const CHAIN_IDS: ChainId[] = ['ethereum', 'bsc', 'tron'];
+export const CHAIN_IDS: ChainId[] = ['ethereum', 'bsc', 'tron', 'solana'];
 
 // Each URL can be overridden at build time, e.g. EXPO_PUBLIC_ETHEREUM_RPC_URL=https://…
 // Expo only inlines EXPO_PUBLIC_* variables written out literally, hence no loop.
@@ -39,6 +39,8 @@ const env = {
   bscTestnet: process.env.EXPO_PUBLIC_BSC_TESTNET_RPC_URL,
   tronMainnet: process.env.EXPO_PUBLIC_TRON_API_URL,
   tronTestnet: process.env.EXPO_PUBLIC_TRON_NILE_API_URL,
+  solanaMainnet: process.env.EXPO_PUBLIC_SOLANA_RPC_URL,
+  solanaTestnet: process.env.EXPO_PUBLIC_SOLANA_DEVNET_RPC_URL,
 };
 
 /** Optional TronGrid key; mainnet TronGrid rate-limits anonymous requests heavily. */
@@ -95,6 +97,22 @@ export const CHAINS: Record<NetworkMode, Record<ChainId, ChainConfig>> = {
       // Circle stopped supporting USDC on Tron in 2024, so only USDT is listed.
       tokens: [{ symbol: 'USDT', address: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t', decimals: 6 }],
     },
+    solana: {
+      id: 'solana',
+      name: 'Solana',
+      standard: 'SPL',
+      kind: 'solana',
+      nativeSymbol: 'SOL',
+      nativeDecimals: 9,
+      rpcUrl: env.solanaMainnet || 'https://api.mainnet-beta.solana.com',
+      explorerName: 'Solscan',
+      explorerTxUrl: (h) => `https://solscan.io/tx/${h}`,
+      explorerAddressUrl: (a) => `https://solscan.io/account/${a}`,
+      tokens: [
+        { symbol: 'USDC', address: 'EPjFWdd5AufqSSqeM2qN1xxybapC8G4wEGGkZwyTDt1v', decimals: 6 },
+        { symbol: 'USDT', address: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', decimals: 6 },
+      ],
+    },
   },
   testnet: {
     ethereum: {
@@ -144,6 +162,21 @@ export const CHAINS: Record<NetworkMode, Record<ChainId, ChainConfig>> = {
       explorerAddressUrl: (a) => `https://nile.tronscan.org/#/address/${a}`,
       faucetUrl: 'https://nileex.io/join/getJoinPage',
       tokens: [{ symbol: 'USDT', address: 'TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf', decimals: 6 }],
+    },
+    solana: {
+      id: 'solana',
+      name: 'Solana Devnet',
+      standard: 'SPL',
+      kind: 'solana',
+      nativeSymbol: 'SOL',
+      nativeDecimals: 9,
+      rpcUrl: env.solanaTestnet || 'https://api.devnet.solana.com',
+      explorerName: 'Solscan',
+      explorerTxUrl: (h) => `https://solscan.io/tx/${h}?cluster=devnet`,
+      explorerAddressUrl: (a) => `https://solscan.io/account/${a}?cluster=devnet`,
+      faucetUrl: 'https://faucet.solana.com',
+      // Circle's devnet USDC. There is no official USDT on devnet.
+      tokens: [{ symbol: 'USDC', address: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU', decimals: 6 }],
     },
   },
 };

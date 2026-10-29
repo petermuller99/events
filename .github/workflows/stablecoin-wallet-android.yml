@@ -46,6 +46,14 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      # Checks Solana support against the real network. Informational: public RPC
+      # nodes can rate-limit, so a failure here doesn't block the build.
+      - name: Solana network check
+        continue-on-error: true
+        env:
+          SOLANA_LIVE: '1'
+        run: npx jest __tests__/solana.live.test.ts
+
       - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install
 

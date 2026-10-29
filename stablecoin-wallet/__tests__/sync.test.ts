@@ -83,7 +83,7 @@ const trc20 = (hash: string, from: string, to: string, value: string, ts: number
   value,
 });
 
-const addresses = { evm: ME_EVM, tron: ME_TRON };
+const addresses = { evm: ME_EVM, tron: ME_TRON, solana: '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM' };
 
 it('treats the first sync as a baseline, then reports new money and settled sends', async () => {
   // Already in the wallet before Pearl ever looked: shown in Activity, but no notifications.

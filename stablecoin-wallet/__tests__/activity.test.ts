@@ -10,6 +10,7 @@ import {
 } from '../src/lib/activity';
 import { getChain } from '../src/lib/config';
 import { describeOutcome } from '../src/lib/notify-text';
+import { fromSolanaTx } from '../src/lib/activity';
 import { defaultPrefs } from '../src/lib/prefs';
 import { tronAddressToHex } from '../src/lib/tron-address';
 
@@ -121,5 +122,50 @@ describe('describeOutcome', () => {
     const many = { items: [], received: [got(1), got(2), got(3), got(4)], settled: [sent('confirmed')] };
     expect(describeOutcome('testnet', many, defaultPrefs)[0].body).toBe('You got 4 payments. Open Pearl Wallet to see them.');
     expect(describeOutcome('testnet', many, { notifyReceived: false, notifySends: false })).toEqual([]);
+  });
+});
+
+describe('Solana transaction parsing', () => {
+  const solana = getChain('testnet', 'solana');
+  const USDC = solana.tokens[0].address;
+  const ME = '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM';
+  const FRIEND = '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU';
+  const tb = (owner: string, amount: string) => ({ accountIndex: 1, mint: USDC, owner, uiTokenAmount: { amount, decimals: 6 } });
+
+  it('reads incoming USDC from token balance changes', () => {
+    const [item] = fromSolanaTx(solana, ME, 'sig1', {
+      blockTime: 1_700_000_000,
+      meta: {
+        err: null, fee: 5000, preBalances: [1, 1], postBalances: [1, 1],
+        preTokenBalances: [tb(FRIEND, '9000000'), tb(ME, '1000000')],
+        postTokenBalances: [tb(FRIEND, '4000000'), tb(ME, '6000000')],
+      },
+      transaction: { signatures: ['sig1'], message: { accountKeys: [FRIEND, ME] } },
+    });
+    expect(item).toMatchObject({ direction: 'in', symbol: 'USDC', amount: '5000000', counterparty: FRIEND, timestamp: 1_700_000_000_000 });
+  });
+
+  it('shows a USDC send with account setup as the USDC send only', () => {
+    const items = fromSolanaTx(solana, ME, 'sig2', {
+      blockTime: 1,
+      meta: {
+        err: null, fee: 7000, preBalances: [100_000_000, 0], postBalances: [97_953_720, 2_039_280],
+        preTokenBalances: [tb(ME, '6000000')],
+        postTokenBalances: [tb(ME, '1000000'), tb(FRIEND, '5000000')],
+      },
+      transaction: { signatures: ['sig2'], message: { accountKeys: [{ pubkey: ME, signer: true }, { pubkey: FRIEND }] } },
+    });
+    expect(items.map((i) => [i.direction, i.symbol, i.amount, i.counterparty])).toEqual([['out', 'USDC', '5000000', FRIEND]]);
+  });
+
+  it('reads SOL sent, leaving out the fee, and ignores failed transactions', () => {
+    const tx = (err: unknown) => ({
+      blockTime: 1,
+      meta: { err, fee: 5000, preBalances: [1_000_000_000, 0], postBalances: [899_995_000, 100_000_000] },
+      transaction: { signatures: ['s'], message: { accountKeys: [ME, FRIEND] } },
+    });
+    expect(fromSolanaTx(solana, ME, 's', tx(null))[0]).toMatchObject({ direction: 'out', symbol: 'SOL', amount: '100000000', counterparty: FRIEND });
+    expect(fromSolanaTx(solana, FRIEND, 's', tx(null))[0]).toMatchObject({ direction: 'in', amount: '100000000', counterparty: ME });
+    expect(fromSolanaTx(solana, ME, 's', tx({ InstructionError: [0, 'Custom'] }))).toEqual([]);
   });
 });

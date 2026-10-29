@@ -47,7 +47,10 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
   const [celebration, setCelebration] = useState<CelebrationEvent | null>(null);
   const prefsRef = useRef(prefs);
 
-  const addresses = useMemo(() => (keys ? { evm: keys.evm.address, tron: keys.tron.address } : null), [keys]);
+  const addresses = useMemo(
+    () => (keys ? { evm: keys.evm.address, tron: keys.tron.address, solana: keys.solana.address } : null),
+    [keys],
+  );
 
   useEffect(() => {
     loadPrefs().then((p) => {

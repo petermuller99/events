@@ -1,5 +1,6 @@
 import { getAddress } from 'ethers';
 import type { ChainConfig, ChainId, NetworkMode } from './config';
+import type { SolanaParsedTx, SolanaTokenBalance } from './solana';
 import type { Trc20HistoryEntry, TronHistoryTx } from './tron';
 import { tronAddressFromEvmAddress } from './tron-address';
 import type { AssetId } from './wallet';
@@ -37,6 +38,8 @@ export interface ActivityState {
   nativeBalances: Partial<Record<ChainId, string>>;
   /** Chains synced at least once. The first sync only sets a baseline and never notifies. */
   initialized: Partial<Record<ChainId, boolean>>;
+  /** Solana: transaction signatures already looked at, newest first. */
+  seen?: Partial<Record<ChainId, string[]>>;
 }
 
 export const MAX_ITEMS = 300;
@@ -177,6 +180,80 @@ export function pendingSend(
     timestamp: Date.now(),
     status: 'pending',
   };
+}
+
+/**
+ * Reads one Solana transaction from `owner`'s point of view, using the balance changes
+ * Solana records for every account. Token movements win: a USDC send that also paid
+ * SOL for the recipient's token account shows as the USDC send only.
+ */
+export function fromSolanaTx(chain: ChainConfig, owner: string, signature: string, tx: SolanaParsedTx): ActivityItem[] {
+  const meta = tx.meta;
+  if (!meta || meta.err) return [];
+  const timestamp = (tx.blockTime ?? Date.now() / 1000) * 1000;
+  const base = { chain: chain.id, hash: signature, timestamp, status: 'confirmed' as const };
+  const items: ActivityItem[] = [];
+
+  for (const token of chain.tokens) {
+    const deltas = new Map<string, bigint>();
+    const sum = (list: SolanaTokenBalance[] | undefined, sign: 1n | -1n) => {
+      for (const b of list ?? []) {
+        if (b.mint !== token.address || !b.owner) continue;
+        deltas.set(b.owner, (deltas.get(b.owner) ?? 0n) + sign * BigInt(b.uiTokenAmount.amount));
+      }
+    };
+    sum(meta.postTokenBalances, 1n);
+    sum(meta.preTokenBalances, -1n);
+    const mine = deltas.get(owner) ?? 0n;
+    if (mine === 0n) continue;
+    const direction = mine > 0n ? 'in' : 'out';
+    const counterparty = [...deltas.entries()]
+      .filter(([who, d]) => who !== owner && (direction === 'in' ? d < 0n : d > 0n))
+      .sort((a, b) => (a[1] < b[1] ? -1 : 1) * (direction === 'in' ? 1 : -1))[0]?.[0];
+    items.push({
+      ...base,
+      id: activityId(chain.id, signature, token.symbol, direction),
+      assetId: token.symbol,
+      symbol: token.symbol,
+      decimals: token.decimals,
+      direction,
+      amount: (mine > 0n ? mine : -mine).toString(),
+      counterparty,
+    });
+  }
+  if (items.length) return items;
+
+  const keys = tx.transaction.message.accountKeys.map((k) => (typeof k === 'string' ? k : k.pubkey));
+  const i = keys.indexOf(owner);
+  if (i < 0) return [];
+  // The fee payer (account 0) also paid the fee; leave it out of the amount sent.
+  let delta = BigInt(meta.postBalances[i]) - BigInt(meta.preBalances[i]);
+  if (i === 0) delta += BigInt(meta.fee);
+  if (delta === 0n) return [];
+  const direction = delta > 0n ? 'in' : 'out';
+  let counterparty: string | undefined;
+  let best = 0n;
+  keys.forEach((k, j) => {
+    if (j === i) return;
+    const d = BigInt(meta.postBalances[j]) - BigInt(meta.preBalances[j]);
+    const moved = direction === 'in' ? -d : d;
+    if (moved > best) {
+      best = moved;
+      counterparty = k;
+    }
+  });
+  return [
+    {
+      ...base,
+      id: activityId(chain.id, signature, 'native', direction),
+      assetId: 'native',
+      symbol: chain.nativeSymbol,
+      decimals: chain.nativeDecimals,
+      direction,
+      amount: (delta > 0n ? delta : -delta).toString(),
+      counterparty,
+    },
+  ];
 }
 
 export interface MergeResult {

@@ -444,9 +444,11 @@ export const styles = StyleSheet.create({
   chipSelected: { backgroundColor: colors.text, borderColor: colors.text },
   chipText: { fontSize: 15, fontWeight: '500' },
   chipTextSelected: { color: colors.honeyTop },
-  tiles: { flexDirection: 'row', gap: 10 },
+  // Wraps to a 2×2 grid when there are four choices.
+  tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   tile: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: '45%',
     minHeight: 54,
     borderRadius: 18,
     alignItems: 'center',

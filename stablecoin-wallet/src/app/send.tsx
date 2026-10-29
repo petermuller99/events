@@ -190,9 +190,19 @@ export default function Send() {
           <Row label="Send" value={`${formatAmount(request.amount, asset.decimals, asset.decimals)} ${asset.symbol}`} />
           <Row label="Network" value={`${chain.name} (${asset.contract ? chain.standard : 'native'})`} />
           <Row label="To" value={request.to} mono />
-          <Row label={quote.isMaximum ? 'Network fee (max)' : 'Network fee (est.)'} value={fmtNative(quote.fee)} />
+          <Row
+            label={quote.isMaximum ? 'Network fee (max)' : 'Network fee (est.)'}
+            value={fmtNative(quote.fee - (quote.setupFee ?? 0n))}
+          />
+          {quote.setupFee ? <Row label="Account setup" value={fmtNative(quote.setupFee)} /> : null}
           <Row label={`Your ${chain.nativeSymbol}`} value={fmtNative(quote.nativeBalance)} />
         </Card>
+        {quote.setupFee ? (
+          <Banner tone="info" sticker="curious">
+            This person has never had {asset.symbol} on {chain.name}, so a one-time account setup is paid from your{' '}
+            {chain.nativeSymbol}. Next time it’s free.
+          </Banner>
+        ) : null}
         {quote.notes.map((n) => (
           <Banner key={n} tone="info">
             {n}
@@ -239,7 +249,7 @@ export default function Send() {
         value={to}
         onChangeText={setTo}
         onBlur={() => setTouched(true)}
-        placeholder={chain.kind === 'tron' ? 'Tron address (T…)' : 'Address (0x…)'}
+        placeholder={chain.kind === 'tron' ? 'Tron address (T…)' : chain.kind === 'solana' ? 'Solana address' : 'Address (0x…)'}
         error={recipientError}
         right={<LinkButton title="Paste" onPress={pasteAddress} />}
       />
@@ -295,7 +305,7 @@ export default function Send() {
   );
 }
 
-const SHORT_NAMES: Record<ChainId, string> = { ethereum: 'Ethereum', bsc: 'BNB Chain', tron: 'Tron' };
+const SHORT_NAMES: Record<ChainId, string> = { ethereum: 'Ethereum', bsc: 'BNB Chain', tron: 'Tron', solana: 'Solana' };
 
 const st = StyleSheet.create({
   label: { fontSize: 15, fontWeight: '600', marginBottom: -6 },

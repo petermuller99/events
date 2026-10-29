@@ -1,4 +1,5 @@
 import { HDNodeWallet, Mnemonic } from 'ethers';
+import { deriveSolanaKey } from './solana';
 import { tronAddressFromEvmAddress } from './tron-address';
 
 // BIP-44 paths: coin type 60 is Ethereum (shared by BSC), 195 is Tron.
@@ -15,6 +16,8 @@ export interface WalletKeys {
   /** Used for both Ethereum and BSC. */
   evm: AccountKey;
   tron: AccountKey;
+  /** ed25519 key; privateKey is the 32-byte seed. */
+  solana: AccountKey;
 }
 
 export function normalizeMnemonic(phrase: string): string {
@@ -36,11 +39,13 @@ export function mnemonicFromEntropy(entropy: Uint8Array): string {
 export function deriveKeys(phrase: string): WalletKeys {
   const mnemonic = Mnemonic.fromPhrase(normalizeMnemonic(phrase));
   // Compute the seed once: PBKDF2 is slow in JS and fromPhrase would rerun it per path.
-  const root = HDNodeWallet.fromSeed(mnemonic.computeSeed());
+  const seed = mnemonic.computeSeed();
+  const root = HDNodeWallet.fromSeed(seed);
   const evm = root.derivePath(EVM_PATH);
   const tron = root.derivePath(TRON_PATH);
   return {
     evm: { address: evm.address, privateKey: evm.privateKey },
     tron: { address: tronAddressFromEvmAddress(tron.address), privateKey: tron.privateKey },
+    solana: deriveSolanaKey(seed),
   };
 }

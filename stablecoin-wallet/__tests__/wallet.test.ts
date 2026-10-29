@@ -1,6 +1,7 @@
 import { getAddress } from 'ethers';
 import { formatAmount, formatDollars, parseAmount, toInputAmount } from '../src/lib/amount';
 import { CHAINS, CHAIN_IDS } from '../src/lib/config';
+import { decodeAddress } from '../src/lib/solana';
 import { isValidTronAddress } from '../src/lib/tron-address';
 import { listAssets, validateRecipient } from '../src/lib/wallet';
 
@@ -11,6 +12,7 @@ describe('token config', () => {
       for (const token of chain.tokens) {
         it(`${mode} ${chain.name} ${token.symbol} address has a valid checksum`, () => {
           if (chain.kind === 'tron') expect(isValidTronAddress(token.address)).toBe(true);
+          else if (chain.kind === 'solana') expect(decodeAddress(token.address)).not.toBeNull();
           else expect(getAddress(token.address)).toBe(token.address);
         });
       }
@@ -41,6 +43,17 @@ describe('validateRecipient', () => {
   it('catches typos via checksums', () => {
     expect(validateRecipient('ethereum', evmAddr.replace('f39F', 'f39f'))).toMatch(/Not a valid/);
     expect(validateRecipient('tron', tronAddr.replace('R7N', 'R7M'))).toMatch(/Not a valid/);
+  });
+
+  it('checks Solana addresses and points to the right network', () => {
+    const sol = '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM';
+    expect(validateRecipient('solana', sol)).toBeNull();
+    expect(validateRecipient('solana', evmAddr)).toMatch(/Ethereum\/BSC/);
+    expect(validateRecipient('solana', tronAddr)).toMatch(/Tron address/);
+    expect(validateRecipient('solana', 'EPjFWdd5AufqSSqeM2qN1xxybapC8G4wEGGkZwyTDt1v')).toBeNull();
+    expect(validateRecipient('ethereum', sol)).toMatch(/Solana address/);
+    expect(validateRecipient('tron', sol)).toMatch(/Solana address/);
+    expect(validateRecipient('solana', sol, sol)).toMatch(/own address/);
   });
 
   it('flags the wallet sending to itself', () => {
