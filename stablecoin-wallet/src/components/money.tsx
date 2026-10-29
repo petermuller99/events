@@ -4,19 +4,15 @@ import type { ActivityItem } from '../lib/activity';
 import { formatAmount, formatDollars } from '../lib/amount';
 import { getChain, type NetworkMode } from '../lib/config';
 import { ArrowDown, ArrowUp, Clock, Cross } from './icons';
+import { TokenLogo } from './TokenLogo';
 import { colors, shortAddress, Text } from './ui';
 
-const tokenStyle: Record<string, { bg: string; glyph: string }> = {
-  USDT: { bg: '#26A17B', glyph: '₮' },
-  USDC: { bg: '#2775CA', glyph: '$' },
-};
-
-/** Rounded square with the token's symbol, e.g. a green ₮ for USDT. */
+/** The token's official logo; a lettered circle for anything without one. */
 export function TokenBadge({ symbol, size = 42 }: { symbol: string; size?: number }) {
-  const t = tokenStyle[symbol] ?? { bg: colors.caramel, glyph: symbol.slice(0, 1) };
+  if (symbol === 'USDT' || symbol === 'USDC') return <TokenLogo symbol={symbol} size={size} />;
   return (
-    <View style={[s.badge, { width: size, height: size, borderRadius: size * 0.34, backgroundColor: t.bg }]}>
-      <Text style={[s.badgeText, { fontSize: size * 0.4 }]}>{t.glyph}</Text>
+    <View style={[s.badge, { width: size, height: size, borderRadius: size / 2, backgroundColor: colors.caramel }]}>
+      <Text style={[s.badgeText, { fontSize: size * 0.4 }]}>{symbol.slice(0, 1)}</Text>
     </View>
   );
 }
