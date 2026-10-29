@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { StickerName } from '../components/ui';
 
-/** Money tips for kids: one pops up each time the wallet is unlocked. */
+/** Money tips for kids: a new one pops up once a day, the first time the wallet is opened. */
 export interface Tip {
   id: number;
   emoji: string;
@@ -41,7 +41,18 @@ export interface TipsState {
   next: number;
   /** Ids of tips the child tapped "Got it!" on. */
   collected: number[];
+  /** Day (YYYY-MM-DD, phone's time zone) the last new tip was shown. */
+  shownOn?: string;
 }
+
+/** Today's date in the phone's time zone, e.g. "2026-10-29". */
+export function dayKey(date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/** Whether a new tip is due: one per day. */
+export const tipDue = (state: TipsState, today = dayKey()) => state.shownOn !== today;
 
 const KEY = 'pearl.tips.v1';
 
@@ -60,10 +71,10 @@ export function saveTips(state: TipsState): Promise<void> {
   return AsyncStorage.setItem(KEY, JSON.stringify(state));
 }
 
-/** The tip to show at this login, and the state once it has been shown. */
-export function nextTip(state: TipsState): { tip: Tip; state: TipsState } {
+/** The next new tip, and the state once it has been shown today. */
+export function nextTip(state: TipsState, today = dayKey()): { tip: Tip; state: TipsState } {
   const tip = TIPS[state.next % TIPS.length];
-  return { tip, state: { ...state, next: (state.next + 1) % TIPS.length } };
+  return { tip, state: { ...state, next: (state.next + 1) % TIPS.length, shownOn: today } };
 }
 
 /** The tip shown most recently (for "Today's tip" on Home). */

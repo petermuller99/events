@@ -29,7 +29,7 @@ export default function Phrase() {
     <Screen>
       <View style={s.intro}>
         <Sticker name="cheeky" size={80} />
-        <Body>These 12 words are your wallet. Keep them on paper, somewhere safe.</Body>
+        <Text style={s.introText}>These 12 words are your wallet. Keep them on paper, somewhere safe.</Text>
       </View>
       {phrase ? (
         <View style={s.grid}>
@@ -49,9 +49,13 @@ export default function Phrase() {
 
 const s = StyleSheet.create({
   intro: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  // flex: 1 lets the text wrap beside the sticker instead of running off the screen.
+  introText: { flex: 1, fontSize: 16, lineHeight: 23 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   word: {
-    width: '31%',
+    // Three equal columns that fill the row edge to edge.
+    flexGrow: 1,
+    flexBasis: '30%',
     flexDirection: 'row',
     gap: 6,
     alignItems: 'center',

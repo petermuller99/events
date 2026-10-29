@@ -4,11 +4,23 @@ import type { ActivityItem } from '../lib/activity';
 import { formatAmount, formatDollars } from '../lib/amount';
 import { getChain, type ChainId, type NetworkMode } from '../lib/config';
 import { ArrowDown, ArrowUp, Clock, Cross } from './icons';
-import { TokenLogo } from './TokenLogo';
+import { ChainLogo, TokenLogo } from './TokenLogo';
 import { colors, shortAddress, Text } from './ui';
 
 /** The token's official logo; a lettered circle for anything without one. */
-export function TokenBadge({ symbol, chain, size = 42 }: { symbol: string; chain?: ChainId; size?: number }) {
+export function TokenBadge({
+  symbol,
+  chain,
+  native,
+  size = 42,
+}: {
+  symbol: string;
+  chain?: ChainId;
+  /** The network's own coin (ETH, BNB, TRX, SOL): shown with the network's logo. */
+  native?: boolean;
+  size?: number;
+}) {
+  if (native && chain) return <ChainLogo chain={chain} size={size} />;
   if (symbol === 'USDT' || symbol === 'USDC') return <TokenLogo symbol={symbol} chain={chain} size={size} />;
   return (
     <View style={[s.badge, { width: size, height: size, borderRadius: size / 2, backgroundColor: colors.caramel }]}>

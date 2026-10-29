@@ -1,7 +1,18 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useIntroDone } from '../components/LaunchIntro';
 import { TipCardModal } from '../components/TipCard';
-import { collect, currentTip, emptyTips, isMoneyMaster, loadTips, nextTip, saveTips, type Tip, type TipsState } from '../lib/tips';
+import {
+  collect,
+  currentTip,
+  emptyTips,
+  isMoneyMaster,
+  loadTips,
+  nextTip,
+  saveTips,
+  tipDue,
+  type Tip,
+  type TipsState,
+} from '../lib/tips';
 import { useWallet } from './WalletContext';
 
 interface TipsContextValue {
@@ -14,7 +25,7 @@ interface TipsContextValue {
 
 const TipsContext = createContext<TipsContextValue | null>(null);
 
-/** Shows a new money tip each time the wallet is unlocked (or created). */
+/** Shows a new money tip the first time the wallet is unlocked (or created) each day. */
 export function TipsProvider({ children }: { children: ReactNode }) {
   const { status } = useWallet();
   const introDone = useIntroDone();
@@ -40,6 +51,8 @@ export function TipsProvider({ children }: { children: ReactNode }) {
     if (wasUnlocked.current || !introDone) return;
     wasUnlocked.current = true;
     loadTips().then((s) => {
+      // One new tip a day; later logins that day just keep it on Home.
+      if (!tipDue(s)) return;
       const r = nextTip(s);
       setState(r.state);
       setToday(r.tip);

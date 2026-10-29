@@ -9,6 +9,7 @@ import { ArrowDown, ArrowUp, Chevron } from '../../components/icons';
 import { ListCard, ListRow, TokenBadge } from '../../components/money';
 import { Banner, brandImages, colors, honeyGradient, Screen, Sticker, Text } from '../../components/ui';
 import { formatAmount, formatDollars } from '../../lib/amount';
+import { fetchNativePrices, nativeValue, type NativePrices } from '../../lib/prices';
 import { fetchAllBalances, type ChainBalances } from '../../lib/wallet';
 import { useActivity } from '../../state/ActivityContext';
 import { useTips } from '../../state/TipsContext';
@@ -35,13 +36,21 @@ function greeting(items: ActivityItem[], total: bigint | null): string {
   return hour < 12 ? 'Good morning! ☀️' : hour < 18 ? 'Good afternoon! 🌼' : 'Good evening! 🌙';
 }
 
-/** Sum of all stablecoin balances, scaled to 18 decimals so chains can be added up. */
-function totalStablecoins(rows: ChainBalances[]): bigint {
+/**
+ * Dollar value of one coin, scaled to 18 decimals so coins can be added up. Stablecoins
+ * count as $1; fee coins (ETH, BNB, TRX, SOL) use the current price, or null without one.
+ */
+function coinValue(row: ChainBalances, asset: ChainBalances['assets'][number]['asset'], balance: bigint, prices: NativePrices): bigint | null {
+  if (asset.contract) return balance * 10n ** BigInt(18 - asset.decimals);
+  const price = prices[row.chain.id];
+  return price == null ? null : nativeValue(balance, asset.decimals, price);
+}
+
+/** Sum of all coins' dollar values. */
+function totalValue(rows: ChainBalances[], prices: NativePrices): bigint {
   let total = 0n;
   for (const row of rows) {
-    for (const { asset, balance } of row.assets) {
-      if (asset.contract) total += balance * 10n ** BigInt(18 - asset.decimals);
-    }
+    for (const { asset, balance } of row.assets) total += coinValue(row, asset, balance, prices) ?? 0n;
   }
   return total;
 }
@@ -51,6 +60,7 @@ export default function Home() {
   const activity = useActivity();
   const tips = useTips();
   const [rows, setRows] = useState<ChainBalances[] | null>(null);
+  const [prices, setPrices] = useState<NativePrices>({});
   const [refreshing, setRefreshing] = useState(false);
   const [goal, setGoal] = useState<SavingsGoal | null>(null);
   const request = useRef(0);
@@ -58,10 +68,11 @@ export default function Home() {
   const load = useCallback(async () => {
     const id = ++request.current;
     setRefreshing(true);
-    const result = await fetchAllBalances(mode, keys);
+    const [result, latestPrices] = await Promise.all([fetchAllBalances(mode, keys), fetchNativePrices()]);
     // Ignore a slow response from before a network switch.
     if (id === request.current) {
       setRows(result);
+      setPrices(latestPrices);
       setRefreshing(false);
     }
   }, [mode, keys]);
@@ -87,14 +98,16 @@ export default function Home() {
     activity.refresh();
   };
 
-  const total = rows ? totalStablecoins(rows) : 0n;
+  const total = rows ? totalValue(rows, prices) : 0n;
   const dollars = Number(total / 10n ** 16n) / 100;
   const percent = goal ? goalPercent(goal, dollars) : 0;
-  const coins = rows?.flatMap((r) => r.assets.filter((a) => a.asset.contract).map((a) => ({ ...a, chain: r.chain }))) ?? [];
-  const feeCoins = rows
-    ?.flatMap((r) => r.assets.filter((a) => !a.asset.contract))
-    .map(({ asset, balance }) => `${formatAmount(balance, asset.decimals, 4)} ${asset.symbol}`)
-    .join(' · ');
+  // Fee coins first on each network, then its stablecoins.
+  const coins =
+    rows?.flatMap((r) =>
+      [...r.assets]
+        .sort((a, b) => Number(!!a.asset.contract) - Number(!!b.asset.contract))
+        .map((a) => ({ ...a, chain: r.chain, value: coinValue(r, a.asset, a.balance, prices) })),
+    ) ?? [];
   const failed = rows?.filter((r) => r.error) ?? [];
 
   return (
@@ -206,14 +219,18 @@ export default function Home() {
         {coins.length === 0 ? (
           <ListRow title={rows ? 'No coins to show' : 'Loading…'} last />
         ) : (
-          coins.map(({ asset, balance, chain }, i) => (
+          coins.map(({ asset, balance, chain, value }, i) => (
             <ListRow
               key={`${chain.id}:${asset.id}`}
               last={i === coins.length - 1}
-              left={<TokenBadge symbol={asset.symbol} chain={chain.id} />}
+              left={<TokenBadge symbol={asset.symbol} chain={chain.id} native={!asset.contract} />}
               title={asset.symbol}
-              subtitle={chain.name}
-              right={<Text style={s.coinAmount}>${formatDollars(balance, asset.decimals)}</Text>}
+              subtitle={asset.contract ? chain.name : `${formatAmount(balance, asset.decimals, 4)} ${asset.symbol} · ${chain.name}`}
+              right={
+                <Text style={s.coinAmount}>
+                  {value == null ? `${formatAmount(balance, asset.decimals, 4)} ${asset.symbol}` : `$${formatDollars(value, 18)}`}
+                </Text>
+              }
               onPress={() => router.push({ pathname: '/send', params: { chain: chain.id, asset: asset.id } })}
             />
           ))
@@ -224,7 +241,9 @@ export default function Home() {
           Couldn’t reach {r.chain.name}. Pull down to try again.
         </Banner>
       ))}
-      {feeCoins ? <Text style={s.fee}>Fee coins: {feeCoins}</Text> : null}
+      {coins.some((c) => c.value == null && c.balance > 0n) ? (
+        <Text style={s.fee}>Couldn’t get today’s prices, so ETH, BNB, TRX and SOL aren’t in your total yet.</Text>
+      ) : null}
     </Screen>
   );
 }
