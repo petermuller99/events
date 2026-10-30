@@ -5,8 +5,6 @@ import {
   emptyState,
   fromSolanaTx,
   fromTransferLogs,
-  fromTrc20History,
-  fromTrxHistory,
   mergeItems,
   setStatus,
   storageKey,
@@ -14,14 +12,12 @@ import {
   type ActivityState,
   type TransferLog,
 } from './activity';
-import { CHAIN_IDS, getChain, TRONGRID_API_KEY, type ChainConfig, type ChainId, type NetworkMode } from './config';
+import { CHAIN_IDS, getChain, type ChainConfig, type ChainId, type NetworkMode } from './config';
 import * as evm from './evm';
 import { associatedTokenAddress, SolanaClient } from './solana';
-import { TronClient } from './tron';
 
 export interface WatchedAddresses {
   evm: string;
-  tron: string;
   /** Missing in watch state saved by versions before Solana support. */
   solana?: string;
 }
@@ -42,7 +38,6 @@ const INITIAL_LOOKBACK = 2000;
 /** Give up on a pending send after this long; it was dropped and the money never left. */
 const PENDING_TIMEOUT_MS: Record<ChainConfig['kind'], number> = {
   evm: 6 * 3600_000,
-  tron: 15 * 60_000,
   // A Solana transaction expires with its blockhash after about a minute.
   solana: 5 * 60_000,
 };
@@ -54,7 +49,10 @@ const TRANSFER_TOPIC = keccakId('Transfer(address,address,uint256)');
 export async function loadActivity(mode: NetworkMode): Promise<ActivityState> {
   try {
     const raw = await AsyncStorage.getItem(storageKey(mode));
-    return raw ? { ...emptyState(), ...(JSON.parse(raw) as ActivityState) } : emptyState();
+    if (!raw) return emptyState();
+    const state = { ...emptyState(), ...(JSON.parse(raw) as ActivityState) };
+    // Drop history of networks no longer supported (Tron was removed).
+    return { ...state, items: state.items.filter((i) => CHAIN_IDS.includes(i.chain)) };
   } catch {
     return emptyState();
   }
@@ -73,13 +71,6 @@ export async function recordSend(mode: NetworkMode, item: ActivityItem): Promise
 
 export function clearActivity(): Promise<void> {
   return AsyncStorage.multiRemove([storageKey('mainnet'), storageKey('testnet')]);
-}
-
-const tronClients = new Map<string, TronClient>();
-function tron(chain: ChainConfig): TronClient {
-  let c = tronClients.get(chain.rpcUrl);
-  if (!c) tronClients.set(chain.rpcUrl, (c = new TronClient(chain.rpcUrl, TRONGRID_API_KEY)));
-  return c;
 }
 
 interface ChainSync {
@@ -110,15 +101,6 @@ async function syncSolana(chain: ChainConfig, owner: string, state: ActivityStat
   const txs = await Promise.all(fresh.map((sig) => client.getParsedTransaction(sig)));
   const items = fresh.flatMap((sig, i) => (txs[i] ? fromSolanaTx(chain, owner, sig, txs[i]!) : []));
   return { items, seen: [...fresh, ...(state.seen?.solana ?? [])].slice(0, SOLANA_SEEN_MAX) };
-}
-
-async function syncTron(chain: ChainConfig, owner: string): Promise<ChainSync> {
-  const client = tron(chain);
-  const [trx, ...tokens] = await Promise.all([
-    client.getTrxHistory(owner),
-    ...chain.tokens.map((t) => client.getTrc20History(owner, t.address)),
-  ]);
-  return { items: [...fromTrxHistory(chain, owner, trx), ...tokens.flatMap((e) => fromTrc20History(chain, owner, e))] };
 }
 
 async function syncEvm(chain: ChainConfig, owner: string, state: ActivityState): Promise<ChainSync> {
@@ -184,13 +166,11 @@ async function syncEvm(chain: ChainConfig, owner: string, state: ActivityState):
 
 async function checkPending(chain: ChainConfig, item: ActivityItem): Promise<ActivityItem['status']> {
   const status =
-    chain.kind === 'tron'
-      ? await tron(chain).getTransactionStatus(item.hash)
-      : chain.kind === 'solana'
-        ? await solana(chain).getStatus(item.hash)
-        : await evm.getProvider(chain).getTransactionReceipt(item.hash).then((r) =>
-          r == null ? 'pending' : r.status === 1 ? 'confirmed' : 'failed',
-        );
+    chain.kind === 'solana'
+      ? await solana(chain).getStatus(item.hash)
+      : await evm.getProvider(chain).getTransactionReceipt(item.hash).then((r) =>
+        r == null ? 'pending' : r.status === 1 ? 'confirmed' : 'failed',
+      );
   if (status === 'pending' && Date.now() - item.timestamp > PENDING_TIMEOUT_MS[chain.kind]) return 'failed';
   return status;
 }
@@ -213,15 +193,11 @@ async function doSync(mode: NetworkMode, addresses: WatchedAddresses): Promise<S
   const results = await Promise.all(
     CHAIN_IDS.map(async (id): Promise<[ChainId, ChainSync | null]> => {
       const chain = getChain(mode, id);
-      const owner = id === 'tron' ? addresses.tron : id === 'solana' ? addresses.solana : addresses.evm;
+      const owner = id === 'solana' ? addresses.solana : addresses.evm;
       if (!owner) return [id, null];
       try {
         const result =
-          chain.kind === 'tron'
-            ? await syncTron(chain, owner)
-            : chain.kind === 'solana'
-              ? await syncSolana(chain, owner, state)
-              : await syncEvm(chain, owner, state);
+          chain.kind === 'solana' ? await syncSolana(chain, owner, state) : await syncEvm(chain, owner, state);
         return [id, result];
       } catch {
         return [id, null];

@@ -33,7 +33,7 @@ export default function ImportWallet() {
         <Sticker name="curious" size={120} />
       </View>
       <Body muted>
-        Enter your 12 or 24-word recovery phrase. Phrases from MetaMask, Trust Wallet and TronLink
+        Enter your 12 or 24-word recovery phrase. Phrases from MetaMask, Trust Wallet and Phantom
         restore the same addresses.
       </Body>
       <Field

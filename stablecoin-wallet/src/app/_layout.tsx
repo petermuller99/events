@@ -91,6 +91,7 @@ function Routes() {
       <Stack.Protected guard={status === 'unlocked'} redirectTo={home}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="send" options={{ title: 'Send' }} />
+        <Stack.Screen name="coin" options={{ title: '' }} />
         <Stack.Screen name="receive" options={{ title: 'Receive' }} />
         <Stack.Screen
           name="tx"

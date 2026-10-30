@@ -1,13 +1,11 @@
 import { getAddress } from 'ethers';
 import type { ChainConfig, ChainId, NetworkMode } from './config';
 import type { SolanaParsedTx, SolanaTokenBalance } from './solana';
-import type { Trc20HistoryEntry, TronHistoryTx } from './tron';
-import { tronAddressFromEvmAddress } from './tron-address';
 import type { AssetId } from './wallet';
 
 // Activity = money in and out of this wallet. Items come from three places:
 //  - sends made in this app (recorded as pending, then tracked until confirmed),
-//  - chain data: TronGrid history on Tron, Transfer event logs on Ethereum/BSC,
+//  - chain data: Transfer event logs on Ethereum/BSC, transactions on Solana,
 //  - native coin balance going up on Ethereum/BSC (logs don't cover plain ETH/BNB).
 
 export type ActivityStatus = 'pending' | 'confirmed' | 'failed';
@@ -52,78 +50,6 @@ export function activityId(chain: ChainId, hash: string, assetId: AssetId, direc
   return `${chain}:${hash.toLowerCase()}:${assetId}:${direction}`;
 }
 
-function sameAddress(chain: ChainConfig, a: string, b: string): boolean {
-  return chain.kind === 'tron' ? a === b : a.toLowerCase() === b.toLowerCase();
-}
-
-/** Tron v1 history returns either base58 (T…) or hex (41…) addresses. */
-export function normalizeTronAddress(address: string): string {
-  if (address.startsWith('T')) return address;
-  const hex = address.replace(/^0x/, '');
-  return tronAddressFromEvmAddress('0x' + (hex.length === 42 ? hex.slice(2) : hex));
-}
-
-export function fromTrc20History(
-  chain: ChainConfig,
-  owner: string,
-  entries: Trc20HistoryEntry[],
-): ActivityItem[] {
-  const out: ActivityItem[] = [];
-  for (const e of entries) {
-    if (e.type !== 'Transfer') continue;
-    const token = chain.tokens.find((t) => t.address === e.token_info?.address);
-    if (!token) continue;
-    const incoming = sameAddress(chain, e.to, owner);
-    const outgoing = sameAddress(chain, e.from, owner);
-    if (!incoming && !outgoing) continue;
-    const direction = incoming ? 'in' : 'out';
-    out.push({
-      id: activityId(chain.id, e.transaction_id, token.symbol, direction),
-      chain: chain.id,
-      assetId: token.symbol,
-      symbol: token.symbol,
-      decimals: token.decimals,
-      direction,
-      amount: BigInt(e.value).toString(),
-      counterparty: incoming ? e.from : e.to,
-      hash: e.transaction_id,
-      timestamp: e.block_timestamp,
-      status: 'confirmed',
-    });
-  }
-  return out;
-}
-
-export function fromTrxHistory(chain: ChainConfig, owner: string, txs: TronHistoryTx[]): ActivityItem[] {
-  const out: ActivityItem[] = [];
-  for (const tx of txs) {
-    const c = tx.raw_data?.contract?.[0];
-    if (c?.type !== 'TransferContract') continue;
-    const v = c.parameter.value;
-    if (!v.owner_address || !v.to_address || v.amount == null) continue;
-    const from = normalizeTronAddress(v.owner_address);
-    const to = normalizeTronAddress(v.to_address);
-    const incoming = to === owner;
-    if (!incoming && from !== owner) continue;
-    const direction = incoming ? 'in' : 'out';
-    const ok = (tx.ret?.[0]?.contractRet ?? 'SUCCESS') === 'SUCCESS';
-    out.push({
-      id: activityId(chain.id, tx.txID, 'native', direction),
-      chain: chain.id,
-      assetId: 'native',
-      symbol: chain.nativeSymbol,
-      decimals: chain.nativeDecimals,
-      direction,
-      amount: BigInt(v.amount).toString(),
-      counterparty: incoming ? from : to,
-      hash: tx.txID,
-      timestamp: tx.block_timestamp,
-      status: ok ? 'confirmed' : 'failed',
-    });
-  }
-  return out;
-}
-
 /** A Transfer(address,address,uint256) log, already decoded. */
 export interface TransferLog {
   token: string;
@@ -139,8 +65,8 @@ export function fromTransferLogs(chain: ChainConfig, owner: string, logs: Transf
   for (const log of logs) {
     const token = chain.tokens.find((t) => t.address.toLowerCase() === log.token.toLowerCase());
     if (!token) continue;
-    const incoming = sameAddress(chain, log.to, owner);
-    if (!incoming && !sameAddress(chain, log.from, owner)) continue;
+    const incoming = log.to.toLowerCase() === owner.toLowerCase();
+    if (!incoming && log.from.toLowerCase() !== owner.toLowerCase()) continue;
     const direction = incoming ? 'in' : 'out';
     out.push({
       id: activityId(chain.id, log.hash, token.symbol, direction),

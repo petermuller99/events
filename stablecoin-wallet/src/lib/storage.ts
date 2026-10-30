@@ -27,7 +27,8 @@ export function deleteMnemonic(): Promise<void> {
 }
 
 export async function loadNetworkMode(): Promise<NetworkMode> {
-  return (await SecureStore.getItemAsync(MODE_KEY)) === 'mainnet' ? 'mainnet' : 'testnet';
+  // Real money unless test money was switched on in Settings.
+  return (await SecureStore.getItemAsync(MODE_KEY)) === 'testnet' ? 'testnet' : 'mainnet';
 }
 
 export function saveNetworkMode(mode: NetworkMode): Promise<void> {

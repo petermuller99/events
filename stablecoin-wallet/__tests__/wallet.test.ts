@@ -2,7 +2,6 @@ import { getAddress } from 'ethers';
 import { formatAmount, formatDollars, parseAmount, toInputAmount } from '../src/lib/amount';
 import { CHAINS, CHAIN_IDS } from '../src/lib/config';
 import { decodeAddress } from '../src/lib/solana';
-import { isValidTronAddress } from '../src/lib/tron-address';
 import { listAssets, validateRecipient } from '../src/lib/wallet';
 
 describe('token config', () => {
@@ -11,8 +10,7 @@ describe('token config', () => {
       const chain = CHAINS[mode][id];
       for (const token of chain.tokens) {
         it(`${mode} ${chain.name} ${token.symbol} address has a valid checksum`, () => {
-          if (chain.kind === 'tron') expect(isValidTronAddress(token.address)).toBe(true);
-          else if (chain.kind === 'solana') expect(decodeAddress(token.address)).not.toBeNull();
+          if (chain.kind === 'solana') expect(decodeAddress(token.address)).not.toBeNull();
           else expect(getAddress(token.address)).toBe(token.address);
         });
       }
@@ -21,7 +19,7 @@ describe('token config', () => {
 
   it('lists tokens before the native coin', () => {
     expect(listAssets('mainnet', 'bsc').map((a) => a.symbol)).toEqual(['USDT', 'USDC', 'BNB']);
-    expect(listAssets('mainnet', 'tron').map((a) => a.symbol)).toEqual(['USDT', 'TRX']);
+    expect(listAssets('mainnet', 'solana').map((a) => a.symbol)).toEqual(['USDC', 'USDT', 'SOL']);
   });
 });
 
@@ -32,27 +30,25 @@ describe('validateRecipient', () => {
   it('accepts valid addresses for each chain', () => {
     expect(validateRecipient('ethereum', evmAddr)).toBeNull();
     expect(validateRecipient('bsc', evmAddr.toLowerCase())).toBeNull();
-    expect(validateRecipient('tron', ` ${tronAddr} `)).toBeNull();
   });
 
   it('blocks sending to the wrong network', () => {
-    expect(validateRecipient('ethereum', tronAddr)).toMatch(/Tron address/);
-    expect(validateRecipient('tron', evmAddr)).toMatch(/Ethereum\/BSC address/);
+    expect(validateRecipient('ethereum', ` ${tronAddr} `)).toMatch(/doesn’t support Tron/);
+    expect(validateRecipient('solana', evmAddr)).toMatch(/Ethereum\/BSC address/);
   });
 
   it('catches typos via checksums', () => {
     expect(validateRecipient('ethereum', evmAddr.replace('f39F', 'f39f'))).toMatch(/Not a valid/);
-    expect(validateRecipient('tron', tronAddr.replace('R7N', 'R7M'))).toMatch(/Not a valid/);
   });
 
   it('checks Solana addresses and points to the right network', () => {
     const sol = '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM';
     expect(validateRecipient('solana', sol)).toBeNull();
     expect(validateRecipient('solana', evmAddr)).toMatch(/Ethereum\/BSC/);
-    expect(validateRecipient('solana', tronAddr)).toMatch(/Tron address/);
+    expect(validateRecipient('solana', tronAddr)).toMatch(/doesn’t support Tron/);
     expect(validateRecipient('solana', 'EPjFWdd5AufqSSqeM2qN1xxybapC8G4wEGGkZwyTDt1v')).toBeNull();
     expect(validateRecipient('ethereum', sol)).toMatch(/Solana address/);
-    expect(validateRecipient('tron', sol)).toMatch(/Solana address/);
+    expect(validateRecipient('bsc', sol)).toMatch(/Solana address/);
     expect(validateRecipient('solana', sol, sol)).toMatch(/own address/);
   });
 

@@ -1,15 +1,28 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ActivityItem } from '../../lib/activity';
 import { goalPercent, loadGoal, type SavingsGoal } from '../../lib/goal';
-import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { ArrowDown, ArrowUp, Chevron } from '../../components/icons';
+import { ChangeLabel, LineChart, RangeTabs } from '../../components/Chart';
 import { ListCard, ListRow, TokenBadge } from '../../components/money';
 import { Banner, brandImages, colors, honeyGradient, Screen, Sticker, Text } from '../../components/ui';
 import { formatAmount, formatDollars } from '../../lib/amount';
-import { fetchNativePrices, nativeValue, type NativePrices } from '../../lib/prices';
+import type { ChainId } from '../../lib/config';
+import { portfolioSeries, type Holding } from '../../lib/portfolio';
+import {
+  change24h,
+  fetchNativePrices,
+  fetchPriceHistory,
+  nativeValue,
+  RANGES,
+  type NativePrices,
+  type PricePoint,
+  type Range,
+} from '../../lib/prices';
+import { checkForUpdate, type UpdateInfo } from '../../lib/updates';
 import { fetchAllBalances, type ChainBalances } from '../../lib/wallet';
 import { useActivity } from '../../state/ActivityContext';
 import { useTips } from '../../state/TipsContext';
@@ -69,7 +82,16 @@ export default function Home() {
   const [prices, setPrices] = useState<NativePrices>({});
   const [refreshing, setRefreshing] = useState(false);
   const [goal, setGoal] = useState<SavingsGoal | null>(null);
+  const [range, setRange] = useState<Range>('1W');
+  const [history, setHistory] = useState<{ key: string; data: Partial<Record<ChainId, PricePoint[]>> } | null>(null);
+  const [update, setUpdate] = useState<UpdateInfo | null>(null);
+  /** When balances were last loaded: the chart ends there. */
+  const [loadedAt, setLoadedAt] = useState(0);
   const request = useRef(0);
+
+  useEffect(() => {
+    checkForUpdate().then(setUpdate);
+  }, []);
 
   const load = useCallback(async () => {
     const id = ++request.current;
@@ -79,6 +101,7 @@ export default function Home() {
     if (id === request.current) {
       setRows(result);
       setPrices(latestPrices);
+      setLoadedAt(Date.now());
       setRefreshing(false);
     }
   }, [mode, keys]);
@@ -113,6 +136,42 @@ export default function Home() {
   ).sort(byValue);
   const failed = rows?.filter((r) => r.error) ?? [];
 
+  // Price history only for the fee coins actually held, to keep requests down.
+  const heldNative = (rows ?? [])
+    .filter((r) => r.assets.some((a) => !a.asset.contract && a.balance > 0n))
+    .map((r) => r.chain.id);
+  const historyKey = `${range}:${heldNative.join(',')}`;
+  useEffect(() => {
+    let current = true;
+    Promise.all(heldNative.map((c) => fetchPriceHistory(c, range).then((p) => [c, p] as const, () => null))).then(
+      (res) => {
+        if (current) setHistory({ key: historyKey, data: Object.fromEntries(res.filter((r) => r != null)) });
+      },
+    );
+    return () => {
+      current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyKey]);
+
+  const series = useMemo(() => {
+    if (!rows) return [];
+    const holdings: Holding[] = rows.flatMap((r) =>
+      r.assets.map(({ asset, balance }) => ({
+        chain: r.chain.id,
+        assetId: asset.id,
+        decimals: asset.decimals,
+        balance,
+        stable: !!asset.contract,
+      })),
+    );
+    const now = loadedAt;
+    const current = Object.fromEntries(Object.entries(prices).map(([c, p]) => [c, Number(p) / 1e6]));
+    const data = history?.key === historyKey ? history.data : {};
+    return portfolioSeries(holdings, activity.items, data, current, now - RANGES[range] * 86_400_000, now);
+  }, [rows, prices, history, historyKey, activity.items, range, loadedAt]);
+  const growth = series.length > 1 ? series[series.length - 1].usd - series[0].usd : 0;
+
   return (
     <Screen tab refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}>
       <View style={s.header}>
@@ -131,6 +190,23 @@ export default function Home() {
         <Text style={s.bubbleText}>{greeting(activity.items, rows ? total : null)}</Text>
       </View>
 
+      {update ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => Linking.openURL(update.url)}
+          style={({ pressed }) => [s.update, pressed && { opacity: 0.8 }]}
+        >
+          <Text style={{ fontSize: 24 }}>🎁</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={s.updateTitle}>New version available</Text>
+            <Text style={s.muted}>Build {update.build} · tap to download</Text>
+          </View>
+          <View style={s.updateButton}>
+            <Text style={s.updateButtonText}>Update</Text>
+          </View>
+        </Pressable>
+      ) : null}
+
       {!hasScreenLock ? (
         <Banner tone="warning">
           This phone has no screen lock, so anyone holding it can open Pearl Wallet. Set a passcode in your phone’s
@@ -145,6 +221,13 @@ export default function Home() {
             <Text style={s.balanceAmount} adjustsFontSizeToFit numberOfLines={1}>
               {rows ? `$${formatDollars(total, 18)}` : '…'}
             </Text>
+            {rows && total > 0n ? (
+              <>
+                <ChangeLabel change={growth} range={range} />
+                <LineChart values={series.map((p) => p.usd)} height={70} />
+                <RangeTabs value={range} onChange={setRange} dark />
+              </>
+            ) : null}
             {goal ? (
               <Pressable onPress={() => router.push('/goal')} accessibilityRole="button" style={{ gap: 4 }}>
                 <Text style={s.goalText} numberOfLines={1}>
@@ -230,11 +313,18 @@ export default function Home() {
               title={asset.symbol}
               subtitle={asset.contract ? chain.name : `${formatAmount(balance, asset.decimals, 4)} ${asset.symbol} · ${chain.name}`}
               right={
-                <Text style={s.coinAmount}>
-                  {value == null ? `${formatAmount(balance, asset.decimals, 4)} ${asset.symbol}` : `$${formatDollars(value, 18)}`}
-                </Text>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={s.coinAmount}>
+                    {value == null ? `${formatAmount(balance, asset.decimals, 4)} ${asset.symbol}` : `$${formatDollars(value, 18)}`}
+                  </Text>
+                  {!asset.contract && change24h(chain.id) != null ? (
+                    <Text style={[s.coinChange, { color: change24h(chain.id)! >= 0 ? colors.success : colors.pinkDark }]}>
+                      {change24h(chain.id)! >= 0 ? '▲' : '▼'} {Math.abs(change24h(chain.id)!).toFixed(1)}%
+                    </Text>
+                  ) : null}
+                </View>
               }
-              onPress={() => router.push({ pathname: '/send', params: { chain: chain.id, asset: asset.id } })}
+              onPress={() => router.push({ pathname: '/coin', params: { chain: chain.id, asset: asset.id } })}
             />
           ))
         )}
@@ -343,5 +433,20 @@ const s = StyleSheet.create({
   muted: { fontSize: 14, lineHeight: 20, color: colors.muted },
   section: { fontSize: 19, fontWeight: '700', marginTop: 6 },
   coinAmount: { fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  coinChange: { fontSize: 12, fontWeight: '600' },
+  update: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.skyLight,
+    borderColor: colors.sky,
+    borderWidth: 2,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  updateTitle: { fontSize: 15, fontWeight: '700' },
+  updateButton: { backgroundColor: colors.text, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
+  updateButtonText: { color: colors.honey, fontWeight: '700', fontSize: 14 },
   fee: { fontSize: 13, color: colors.muted, textAlign: 'center' },
 });

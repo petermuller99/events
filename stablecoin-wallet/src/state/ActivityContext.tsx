@@ -48,7 +48,7 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
   const prefsRef = useRef(prefs);
 
   const addresses = useMemo(
-    () => (keys ? { evm: keys.evm.address, tron: keys.tron.address, solana: keys.solana.address } : null),
+    () => (keys ? { evm: keys.evm.address, solana: keys.solana.address } : null),
     [keys],
   );
 

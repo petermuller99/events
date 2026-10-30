@@ -9,7 +9,6 @@ import type { ChainId } from '../lib/config';
 const NETWORKS: { id: ChainId; name: string }[] = [
   { id: 'ethereum', name: 'Ethereum' },
   { id: 'bsc', name: 'BNB' },
-  { id: 'tron', name: 'Tron' },
   { id: 'solana', name: 'Solana' },
 ];
 

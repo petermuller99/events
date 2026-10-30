@@ -4,7 +4,7 @@ import { Linking, StyleSheet, View } from 'react-native';
 import { ListCard, ListRow } from '../components/money';
 import { colors, LinkButton, Screen, Text } from '../components/ui';
 import { CHAIN_IDS, getChain, type ChainId } from '../lib/config';
-import { EVM_PATH, TRON_PATH } from '../lib/keys';
+import { EVM_PATH } from '../lib/keys';
 import { SOLANA_PATH } from '../lib/solana';
 import { addressFor } from '../lib/wallet';
 import { useUnlockedWallet } from '../state/WalletContext';
@@ -42,11 +42,11 @@ export default function Addresses() {
         })}
       </ListCard>
       <Text style={s.note}>
-        Ethereum and BNB Chain share one address. The same secret words restore these in MetaMask, Trust Wallet,
-        TronLink and Phantom.
+        Ethereum and BNB Chain share one address. The same secret words restore these in MetaMask, Trust Wallet
+        and Phantom.
       </Text>
       <Text style={s.note}>
-        Paths: {EVM_PATH} (Ethereum, BNB Chain) · {TRON_PATH} (Tron) · {SOLANA_PATH} (Solana)
+        Paths: {EVM_PATH} (Ethereum, BNB Chain) · {SOLANA_PATH} (Solana)
       </Text>
     </Screen>
   );

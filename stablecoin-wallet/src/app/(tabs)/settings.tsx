@@ -8,6 +8,7 @@ import { Button, colors, Screen, Sticker, Text } from '../../components/ui';
 import { authenticate } from '../../lib/auth';
 import { openBatterySettings } from '../../lib/battery';
 import { loadLastBackgroundCheck, type Prefs } from '../../lib/prefs';
+import { BUILD_NUMBER, checkForUpdate, type UpdateInfo } from '../../lib/updates';
 import { useActivity } from '../../state/ActivityContext';
 import { useUnlockedWallet } from '../../state/WalletContext';
 
@@ -35,6 +36,12 @@ export default function Settings() {
   const { mode, setMode, lock, removeWallet } = useUnlockedWallet();
   const { prefs, setPrefs } = useActivity();
   const [lastCheck, setLastCheck] = useState<number | null>(null);
+  const [update, setUpdate] = useState<{ checking: boolean; found?: UpdateInfo | null }>({ checking: false });
+
+  const checkUpdates = async () => {
+    setUpdate({ checking: true });
+    setUpdate({ checking: false, found: await checkForUpdate(true) });
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -136,12 +143,34 @@ export default function Settings() {
       <ListCard>
         <ListRow
           title="Test money"
-          subtitle={mode === 'testnet' ? 'On: free practice coins' : 'Off: using real money'}
+          subtitle={mode === 'testnet' ? 'On: practising with free test coins' : 'Practise with free test coins'}
           right={<Toggle label="Test money" value={mode === 'testnet'} onChange={setTestMoney} />}
         />
+        <ListRow title="Networks" subtitle="Ethereum · BNB Chain · Solana" />
         <ListRow title="Show my secret words" right={chevron} onPress={() => router.push('/phrase')} />
         <ListRow title="My addresses" right={chevron} onPress={() => router.push('/addresses')} />
         <ListRow last title="Lock now" right={chevron} onPress={lock} />
+      </ListCard>
+
+      <Text style={s.section}>App</Text>
+      <ListCard>
+        <ListRow
+          last
+          title="App version"
+          subtitle={
+            BUILD_NUMBER == null
+              ? 'Development build'
+              : update.checking
+                ? `Build ${BUILD_NUMBER} · checking…`
+                : update.found
+                  ? `Build ${BUILD_NUMBER} · build ${update.found.build} is available, tap to download`
+                  : update.found === null
+                    ? `Build ${BUILD_NUMBER} · you’re up to date ✅`
+                    : `Build ${BUILD_NUMBER}`
+          }
+          right={<Text style={s.check}>{update.found ? 'Update' : 'Check'}</Text>}
+          onPress={() => (update.found ? Linking.openURL(update.found.url) : checkUpdates())}
+        />
       </ListCard>
 
       <Button title="Remove wallet from this phone" variant="danger" onPress={confirmRemove} />
@@ -155,6 +184,7 @@ export default function Settings() {
 }
 
 const s = StyleSheet.create({
+  check: { fontSize: 14, fontWeight: '700', color: colors.skyDark },
   title: { fontSize: 30, fontWeight: '700', marginTop: 4 },
   section: { fontSize: 13, fontWeight: '600', color: colors.muted, letterSpacing: 0.6, textTransform: 'uppercase', marginLeft: 4, marginTop: 4 },
   note: { fontSize: 13, color: colors.muted, textAlign: 'center' },

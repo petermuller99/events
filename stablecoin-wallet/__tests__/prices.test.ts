@@ -5,10 +5,9 @@ describe('fee coin prices', () => {
     const prices = parsePrices({
       ethereum: { usd: 3456.78 },
       binancecoin: { usd: 612.5 },
-      tron: { usd: 0.1234 },
       solana: { usd: 0 },
     });
-    expect(prices).toEqual({ ethereum: 3456780000n, bsc: 612500000n, tron: 123400n });
+    expect(prices).toEqual({ ethereum: 3456780000n, bsc: 612500000n });
   });
 
   it('values balances in dollars scaled to 18 decimals', () => {

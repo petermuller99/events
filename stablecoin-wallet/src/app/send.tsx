@@ -249,7 +249,7 @@ export default function Send() {
         value={to}
         onChangeText={setTo}
         onBlur={() => setTouched(true)}
-        placeholder={chain.kind === 'tron' ? 'Tron address (T…)' : chain.kind === 'solana' ? 'Solana address' : 'Address (0x…)'}
+        placeholder={chain.kind === 'solana' ? 'Solana address' : 'Address (0x…)'}
         error={recipientError}
         right={<LinkButton title="Paste" onPress={pasteAddress} />}
       />
@@ -305,7 +305,7 @@ export default function Send() {
   );
 }
 
-const SHORT_NAMES: Record<ChainId, string> = { ethereum: 'Ethereum', bsc: 'BNB Chain', tron: 'Tron', solana: 'Solana' };
+const SHORT_NAMES: Record<ChainId, string> = { ethereum: 'Ethereum', bsc: 'BNB Chain', solana: 'Solana' };
 
 const st = StyleSheet.create({
   label: { fontSize: 15, fontWeight: '600', marginBottom: -6 },

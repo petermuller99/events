@@ -58,7 +58,6 @@ export const fonts = {
 export const chainColors: Record<string, string> = {
   ethereum: '#627EEA',
   bsc: '#E0A800',
-  tron: '#E50914',
 };
 
 const stickers = {

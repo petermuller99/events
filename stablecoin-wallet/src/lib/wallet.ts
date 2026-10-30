@@ -2,7 +2,6 @@ import { isAddress } from 'ethers';
 import {
   CHAIN_IDS,
   getChain,
-  TRONGRID_API_KEY,
   type ChainConfig,
   type ChainId,
   type NetworkMode,
@@ -24,11 +23,10 @@ import {
   transferSolInstruction,
   transferTokenInstruction,
 } from './solana';
-import { signTronTransaction, TronClient } from './tron';
 import { isValidTronAddress } from './tron-address';
 
 // Chain-agnostic API used by the screens. Everything below dispatches to the
-// EVM implementation (Ethereum, BSC), the Tron one or the Solana one.
+// EVM implementation (Ethereum, BSC) or the Solana one.
 
 export type AssetId = 'native' | TokenSymbol;
 
@@ -49,7 +47,7 @@ export interface ChainBalances {
 }
 
 function accountFor(keys: WalletKeys, chain: ChainId) {
-  return chain === 'tron' ? keys.tron : chain === 'solana' ? keys.solana : keys.evm;
+  return chain === 'solana' ? keys.solana : keys.evm;
 }
 
 export function addressFor(keys: WalletKeys, chain: ChainId): string {
@@ -78,16 +76,6 @@ export function findAsset(mode: NetworkMode, chainId: ChainId, id: AssetId): Ass
   return listAssets(mode, chainId).find((a) => a.id === id);
 }
 
-const tronClients = new Map<string, TronClient>();
-function tronClient(chain: ChainConfig): TronClient {
-  let client = tronClients.get(chain.rpcUrl);
-  if (!client) {
-    client = new TronClient(chain.rpcUrl, TRONGRID_API_KEY);
-    tronClients.set(chain.rpcUrl, client);
-  }
-  return client;
-}
-
 const solanaClients = new Map<string, SolanaClient>();
 export function solanaClient(chain: ChainConfig): SolanaClient {
   let client = solanaClients.get(chain.rpcUrl);
@@ -103,11 +91,9 @@ async function verifyDecimals(chain: ChainConfig, asset: Asset): Promise<void> {
   const key = `${chain.id}:${chain.rpcUrl}:${asset.contract}`;
   if (verifiedDecimals.has(key)) return;
   const onChain =
-    chain.kind === 'tron'
-      ? await tronClient(chain).getTokenDecimals(asset.contract)
-      : chain.kind === 'solana'
-        ? await solanaClient(chain).getTokenDecimals(asset.contract)
-        : await evm.getTokenDecimals(chain, asset.contract);
+    chain.kind === 'solana'
+      ? await solanaClient(chain).getTokenDecimals(asset.contract)
+      : await evm.getTokenDecimals(chain, asset.contract);
   // Solana nodes may not serve the mint account. That's safe to skip: transfers use
   // TransferChecked, which the network rejects if the decimals don't match.
   if (onChain == null) return;
@@ -119,10 +105,6 @@ async function verifyDecimals(chain: ChainConfig, asset: Asset): Promise<void> {
 
 async function getBalance(chain: ChainConfig, asset: Asset, owner: string): Promise<bigint> {
   await verifyDecimals(chain, asset);
-  if (chain.kind === 'tron') {
-    const client = tronClient(chain);
-    return asset.contract ? client.getTokenBalance(owner, asset.contract) : client.getTrxBalance(owner);
-  }
   if (chain.kind === 'solana') {
     const client = solanaClient(chain);
     return asset.contract ? client.getTokenBalance(owner, asset.contract) : client.getSolBalance(owner);
@@ -161,28 +143,13 @@ export function fetchAllBalances(mode: NetworkMode, keys: WalletKeys): Promise<C
 export function validateRecipient(chainId: ChainId, to: string, ownAddress?: string): string | null {
   const value = to.trim();
   if (!value) return 'Enter a recipient address';
+  if (isValidTronAddress(value)) return 'This is a Tron address. Pearl Wallet doesn’t support Tron.';
   if (chainId === 'solana') {
     if (value.startsWith('0x')) return 'This is an Ethereum/BSC address. Choose that network instead.';
     const check = checkSolanaAddress(value);
-    if (check === 'invalid') {
-      return /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(value)
-        ? 'This is a Tron address. Choose the Tron network instead.'
-        : 'Not a valid Solana address';
-    }
+    if (check === 'invalid') return 'Not a valid Solana address';
     if (check === 'program') return 'This is a token or program account, not a wallet address';
-  } else if (chainId === 'tron') {
-    if (value.startsWith('0x')) {
-      return 'This is an Ethereum/BSC address. TRC-20 tokens can only go to a Tron address (starts with T).';
-    }
-    if (!isValidTronAddress(value)) {
-      return checkSolanaAddress(value) === 'ok'
-        ? 'This is a Solana address. Choose the Solana network instead.'
-        : 'Not a valid Tron address';
-    }
   } else {
-    if (isValidTronAddress(value)) {
-      return 'This is a Tron address. Choose the Tron network to send TRC-20 tokens.';
-    }
     if (!value.startsWith('0x') && checkSolanaAddress(value) === 'ok') {
       return 'This is a Solana address. Choose the Solana network instead.';
     }
@@ -235,37 +202,7 @@ export async function quoteTransfer(
     return { fee: evmQuote.maxFee, isMaximum: true, nativeBalance, nativeRequired, notes: [], evmQuote };
   }
 
-  if (chain.kind === 'solana') return quoteSolana(chain, from, to, req);
-
-  const client = tronClient(chain);
-  const [params, resources, nativeBalance, recipientActive] = await Promise.all([
-    client.getChainParameters(),
-    client.getAccountResources(from),
-    client.getTrxBalance(from),
-    client.isActivated(to),
-  ]);
-  const notes: string[] = [];
-  const bandwidthPrice = BigInt(params.getTransactionFee ?? 1000);
-  // Roughly the signed transaction size in bytes, which is what bandwidth is charged on.
-  const txBytes = req.asset.contract ? 345 : 270;
-  let fee = resources.bandwidth >= txBytes ? 0n : BigInt(txBytes) * bandwidthPrice;
-
-  if (req.asset.contract) {
-    const energy = await client.estimateTrc20Energy(from, to, req.asset.contract, req.amount);
-    const missing = Math.max(0, energy - resources.energy);
-    fee += BigInt(missing) * BigInt(params.getEnergyFee ?? 420);
-    if (missing > 0) {
-      notes.push(`Uses about ${energy.toLocaleString()} energy; TRX is burned for the energy you don't have.`);
-    }
-    if (!recipientActive) notes.push('The recipient address has never been used on Tron.');
-  } else if (!recipientActive) {
-    fee +=
-      BigInt(params.getCreateNewAccountFeeInSystemContract ?? 1_000_000) +
-      BigInt(params.getCreateAccountFee ?? 100_000);
-    notes.push('The recipient is a new Tron account, so activating it costs about 1.1 TRX extra.');
-  }
-  const nativeRequired = fee + (req.asset.contract ? 0n : req.amount);
-  return { fee, isMaximum: false, nativeBalance, nativeRequired, notes };
+  return quoteSolana(chain, from, to, req);
 }
 
 async function quoteSolana(chain: ChainConfig, from: string, to: string, req: TransferRequest): Promise<FeeQuote> {
@@ -343,14 +280,8 @@ export async function sendTransfer(
       { from, to, amount: req.amount, token: req.asset.contract },
       quote.evmQuote,
     );
-  } else if (chain.kind === 'solana') {
-    hash = await sendSolana(chain, from, privateKey, to, req);
   } else {
-    const client = tronClient(chain);
-    const unsigned = req.asset.contract
-      ? await client.buildTrc20Transfer(from, to, req.asset.contract, req.amount)
-      : await client.buildTrxTransfer(from, to, req.amount);
-    hash = await client.broadcast(signTronTransaction(unsigned, privateKey));
+    hash = await sendSolana(chain, from, privateKey, to, req);
   }
   return { hash, explorerUrl: chain.explorerTxUrl(hash) };
 }

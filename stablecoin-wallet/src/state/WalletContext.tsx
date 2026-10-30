@@ -35,7 +35,7 @@ const nextFrame = () => new Promise((resolve) => setTimeout(resolve, 50));
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<WalletStatus>('loading');
   const [keys, setKeys] = useState<WalletKeys | null>(null);
-  const [mode, setModeState] = useState<NetworkMode>('testnet');
+  const [mode, setModeState] = useState<NetworkMode>('mainnet');
   const [hasScreenLock, setHasScreenLock] = useState(true);
   const backgroundedAt = useRef<number | null>(null);
 
