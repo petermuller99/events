@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Send pocket money 🎁 · Pearl Wallet</title>
+<meta name="description" content="Send digital dollars (USDC or USDT) straight to a child's Pearl Wallet.">
+<meta property="og:title" content="Send pocket money 🎁">
+<meta property="og:description" content="Send digital dollars straight to a child's Pearl Wallet, from any wallet or exchange.">
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --text: #3B2209; --muted: #6B4A2A; --card: #fff; --border: #F3E4C6; --honey-top: #FFD55B; --honey-bottom: #FFA62B; --good: #2E6B30; --good-bg: #DDF5E5; --warn: #B4475A; --warn-bg: #FDE6EA; }
+  * { box-sizing: border-box; margin: 0; }
+  body { font-family: Fredoka, system-ui, sans-serif; font-weight: 500; color: var(--text); min-height: 100vh;
+    background: linear-gradient(180deg, var(--honey-top), var(--honey-bottom)); background-attachment: fixed; }
+  main { max-width: 440px; margin: 0 auto; padding: 24px 16px 40px; }
+  .hero { text-align: center; }
+  .hero img { width: 150px; height: 150px; object-fit: contain; }
+  .hex { width: 120px; height: 120px; margin: 0 auto; display: grid; place-items: center; font-size: 56px; background: #fff;
+    clip-path: polygon(25% 3%, 75% 3%, 100% 50%, 75% 97%, 25% 97%, 0 50%); }
+  h1 { font-size: 28px; font-weight: 700; margin-top: 8px; line-height: 1.15; }
+  .lead { color: #4A2C0E; margin-top: 6px; font-size: 16px; line-height: 1.4; }
+  h2 { font-size: 15px; font-weight: 700; margin: 22px 0 8px; }
+  .nets { display: grid; gap: 8px; }
+  .net { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer;
+    background: var(--card); border: 2.5px solid var(--border); border-radius: 18px; padding: 11px 13px; }
+  .net[aria-pressed="true"] { border-color: var(--text); box-shadow: 0 4px 0 var(--text); }
+  .logo { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 700; flex: none; }
+  .net b { display: block; font-size: 16px; } .net small { color: var(--muted); font-size: 13px; }
+  .tag { margin-left: auto; font-size: 12px; font-weight: 700; border-radius: 99px; padding: 3px 9px; }
+  .tag.best { background: var(--good-bg); color: var(--good); } .tag.pricey { background: var(--warn-bg); color: var(--warn); }
+  .pay { background: var(--card); border-radius: 24px; padding: 18px 16px; margin-top: 14px; text-align: center; box-shadow: 0 6px 0 #E59A1F; }
+  .qr { width: 210px; height: 210px; margin: 4px auto 8px; } .qr svg { width: 100%; height: 100%; }
+  .addr { font-family: ui-monospace, Menlo, monospace; font-size: 13px; word-break: break-all; background: #FFF8EA; border-radius: 12px; padding: 10px; }
+  button.copy { margin-top: 12px; width: 100%; font: inherit; font-weight: 700; font-size: 17px; border: 0; border-radius: 999px; padding: 14px;
+    background: var(--text); color: var(--honey-top); cursor: pointer; box-shadow: 0 4px 0 #1d1004; }
+  .only { margin-top: 12px; font-size: 14px; background: var(--warn-bg); color: #7A2232; border-radius: 14px; padding: 10px 12px; text-align: left; line-height: 1.4; }
+  ol { margin-top: 6px; padding-left: 20px; line-height: 1.6; font-size: 15px; }
+  .foot { text-align: center; margin-top: 26px; font-size: 13px; color: #4A2C0E; }
+  .error { background: var(--card); border-radius: 20px; padding: 18px; margin-top: 20px; text-align: center; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <img id="photo" alt="" hidden>
+    <div id="bee" class="hex" aria-hidden="true">🐝</div>
+    <h1>Send <span id="name">Pearl</span> pocket money 🎁</h1>
+    <p class="lead"><span id="name2">Pearl</span> saves digital dollars in her own Pearl Wallet. Send from any crypto wallet or exchange.</p>
+  </section>
+
+  <div id="bad" class="error" hidden>
+    <h2 style="margin:0">This gift link looks broken</h2>
+    <p class="lead">Ask for a new link from the Pearl Wallet app.</p>
+  </div>
+
+  <div id="gift" hidden>
+    <h2>1. Choose how to send</h2>
+    <div class="nets" id="nets"></div>
+
+    <div class="pay">
+      <h2 style="margin-top:0" id="payTitle"></h2>
+      <div class="qr" id="qr" role="img" aria-label="QR code of the address"></div>
+      <div class="addr" id="addr"></div>
+      <button class="copy" id="copy" type="button">Copy address</button>
+      <p class="only" id="only"></p>
+    </div>
+
+    <h2>2. How to send from an exchange</h2>
+    <ol>
+      <li>Open your exchange or wallet app and choose <b>Send</b> or <b>Withdraw</b>.</li>
+      <li>Pick the coin and network shown above. They must match exactly.</li>
+      <li>Paste the address (or scan the QR code), enter the amount and confirm.</li>
+    </ol>
+  </div>
+
+  <p class="foot">🐝 Pearl Wallet · Digital dollars, made for kids.<br>Money sent here goes straight to the child's own wallet.</p>
+</main>
+<script src="qrcode.js"></script>
+<script>
+(function () {
+  // Everything comes from the link's #fragment, which browsers never send to the server.
+  var q = new URLSearchParams(location.hash.slice(1));
+  var name = (q.get('n') || 'Pearl').replace(/[^\p{L}\p{N} '\-]/gu, '').slice(0, 20) || 'Pearl';
+  var sol = q.get('sol') || '';
+  var evm = q.get('evm') || '';
+  var okSol = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(sol);
+  var okEvm = /^0x[0-9a-fA-F]{40}$/.test(evm);
+
+  document.getElementById('name').textContent = name;
+  document.getElementById('name2').textContent = name;
+  document.title = 'Send ' + name + ' pocket money 🎁';
+  if (q.get('p') === '1') {
+    var img = document.getElementById('photo');
+    img.src = 'pearl.webp';
+    img.alt = name;
+    img.hidden = false;
+    document.getElementById('bee').hidden = true;
+  }
+  if (!okSol && !okEvm) { document.getElementById('bad').hidden = false; return; }
+
+  var nets = [
+    { id: 'sol', ok: okSol, address: sol, coin: 'USDC', network: 'Solana', fee: 'Fee under 1¢', tag: ['best', 'Best'], color: '#2775CA', mark: '$' },
+    { id: 'bsc', ok: okEvm, address: evm, coin: 'USDT', network: 'BNB Smart Chain (BEP-20)', fee: 'Fee about 5¢', color: '#26A17B', mark: '₮' },
+    { id: 'eth', ok: okEvm, address: evm, coin: 'USDC', network: 'Ethereum (ERC-20)', fee: 'Fee can be $1 or more', tag: ['pricey', 'Pricey'], color: '#2775CA', mark: '$' },
+  ].filter(function (n) { return n.ok; });
+
+  var list = document.getElementById('nets');
+  var buttons = nets.map(function (n) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'net';
+    var logo = document.createElement('span'); logo.className = 'logo'; logo.style.background = n.color; logo.textContent = n.mark;
+    var text = document.createElement('span');
+    var t = document.createElement('b'); t.textContent = n.coin + ' on ' + n.network.replace(/ \(.*\)/, '');
+    var f = document.createElement('small'); f.textContent = n.fee;
+    text.append(t, f);
+    b.append(logo, text);
+    if (n.tag) { var tag = document.createElement('span'); tag.className = 'tag ' + n.tag[0]; tag.textContent = n.tag[1]; b.append(tag); }
+    b.addEventListener('click', function () { select(n); });
+    list.append(b);
+    return b;
+  });
+
+  function select(n) {
+    buttons.forEach(function (b, i) { b.setAttribute('aria-pressed', String(nets[i] === n)); });
+    document.getElementById('payTitle').textContent = 'Send ' + n.coin + ' on ' + n.network;
+    document.getElementById('addr').textContent = n.address;
+    document.getElementById('qr').innerHTML = window.PearlQR ? window.PearlQR.svg(n.address) : '';
+    document.getElementById('only').textContent =
+      '⚠️ Only send ' + n.coin + ' on ' + n.network + ' to this address. Other coins or networks can be lost for good.';
+    var copy = document.getElementById('copy');
+    copy.textContent = 'Copy address';
+    copy.onclick = function () {
+      navigator.clipboard.writeText(n.address).then(function () {
+        copy.textContent = 'Copied ✓';
+        setTimeout(function () { copy.textContent = 'Copy address'; }, 2000);
+      });
+    };
+  }
+
+  document.getElementById('gift').hidden = false;
+  select(nets[0]);
+})();
+</script>
+</body>
+</html>
