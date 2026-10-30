@@ -6,8 +6,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const RELEASES_URL = 'https://api.github.com/repos/petermuller99/events/releases?per_page=20';
 const TAG = /^pearl-wallet-test-(\d+)$/;
 const KEY = 'pearl.update.v1';
-/** Check at most this often, unless asked from Settings. */
-const CHECK_EVERY_MS = 6 * 3600_000;
+/** Check at most this often, unless asked from Settings. Short, so a new build shows up soon. */
+const CHECK_EVERY_MS = 15 * 60_000;
 
 /** This build's number, or null in development builds. */
 export const BUILD_NUMBER: number | null = Number(process.env.EXPO_PUBLIC_BUILD_NUMBER) || null;

@@ -4,7 +4,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ActivityItem } from '../../lib/activity';
 import { goalPercent, loadGoal, type SavingsGoal } from '../../lib/goal';
-import { Linking, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { AppState, Linking, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { ArrowDown, ArrowUp, Chevron } from '../../components/icons';
 import { ChangeLabel, LineChart, RangeTabs } from '../../components/Chart';
 import { ListCard, ListRow, TokenBadge } from '../../components/money';
@@ -89,8 +89,18 @@ export default function Home() {
   const [loadedAt, setLoadedAt] = useState(0);
   const request = useRef(0);
 
+  // Look again whenever Home is shown or the app comes back to the front (cached for a
+  // few minutes), so a check from Settings or a new release shows up straight away.
+  useFocusEffect(
+    useCallback(() => {
+      checkForUpdate().then(setUpdate);
+    }, []),
+  );
   useEffect(() => {
-    checkForUpdate().then(setUpdate);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') checkForUpdate().then(setUpdate);
+    });
+    return () => sub.remove();
   }, []);
 
   const load = useCallback(async () => {
