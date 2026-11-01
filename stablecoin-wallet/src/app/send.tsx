@@ -32,6 +32,7 @@ import {
   listAssets,
   quoteTransfer,
   sendTransfer,
+  normalizeRecipient,
   validateRecipient,
   type AssetId,
   type BitcoinFeeOption,
@@ -45,7 +46,7 @@ import { activityId, pendingSend } from '../lib/activity';
 import { useActivity } from '../state/ActivityContext';
 import { useUnlockedWallet } from '../state/WalletContext';
 import type { BitcoinSpeed } from '../lib/bitcoin';
-import { fetchNativePrices, type NativePrices } from '../lib/prices';
+import { fetchNativePrices, pricesFetchedAt, SEND_PRICE_MAX_AGE_MS, type NativePrices } from '../lib/prices';
 
 type Step = 'form' | 'review' | 'done';
 
@@ -71,7 +72,9 @@ export default function Send() {
   const [result, setResult] = useState<SendResult | null>(null);
   const [speed, setSpeed] = useState<BitcoinSpeed>('normal');
   const [feeOptions, setFeeOptions] = useState<{ mode: string; options: BitcoinFeeOption[] } | null>(null);
-  const [prices, setPrices] = useState<NativePrices>({});
+  // Prices used for sending: only those fetched in the last few minutes, so an old saved
+  // price can't turn "$20" into far more (or less) Bitcoin than meant.
+  const [prices, setPrices] = useState<NativePrices | null>(null);
 
   const chain = getChain(mode, chainId);
   const assets = listAssets(mode, chainId);
@@ -82,12 +85,18 @@ export default function Send() {
   const balance = balances?.assets.find((a) => a.asset.id === asset.id)?.balance;
   const isBitcoin = chain.kind === 'bitcoin';
   // Bitcoin amounts are typed in dollars (converted at today's price) when a price is known.
-  const btcPrice = isBitcoin ? prices.bitcoin : undefined;
+  const btcPrice = isBitcoin ? prices?.bitcoin : undefined;
+  // Wait for the price before Bitcoin amounts can be typed, so the same text can't switch
+  // from meaning BTC to meaning dollars while it's being entered.
+  const amountReady = !isBitcoin || prices != null;
   const dollarEntry = !!asset.contract || btcPrice != null;
   const fees = isBitcoin && feeOptions?.mode === mode ? feeOptions.options : null;
 
   useEffect(() => {
-    fetchNativePrices().then(setPrices);
+    fetchNativePrices().then((p) => {
+      const at = pricesFetchedAt();
+      setPrices(at != null && Date.now() - at < SEND_PRICE_MAX_AGE_MS ? p : {});
+    });
   }, []);
 
   useEffect(() => {
@@ -149,7 +158,7 @@ export default function Send() {
       setError(`You only have ${formatAmount(balance, asset.decimals)} ${asset.symbol}`);
       return;
     }
-    const req: TransferRequest = { asset, to: to.trim(), amount, ...(isBitcoin ? { speed } : {}) };
+    const req: TransferRequest = { asset, to: normalizeRecipient(chainId, to), amount, ...(isBitcoin ? { speed } : {}) };
     setBusy(true);
     try {
       setQuote(await quoteTransfer(mode, keys, req));
@@ -198,7 +207,7 @@ export default function Send() {
           <Body muted>
             {status === 'failed'
               ? 'Your money is still in your wallet.'
-              : `${amountText} ${asset.symbol} to ${to} on ${chain.name}`}
+              : `${request ? formatAmount(request.amount, asset.decimals, asset.decimals) : ''} ${asset.symbol} to ${to} on ${chain.name}`}
           </Body>
         </View>
         {status !== 'failed' ? (
@@ -235,7 +244,9 @@ export default function Send() {
           <Row label="To" value={request.to} mono />
           <Row
             label={quote.isMaximum ? 'Network fee (max)' : 'Network fee (est.)'}
-            value={fmtNative(quote.fee - (quote.setupFee ?? 0n))}
+            value={`${fmtNative(quote.fee - (quote.setupFee ?? 0n))}${
+              isBitcoin && satsToDollars(quote.fee) ? ` (≈ ${satsToDollars(quote.fee)})` : ''
+            }`}
           />
           {quote.setupFee ? <Row label="Account setup" value={fmtNative(quote.setupFee)} /> : null}
           <Row label={`Your ${chain.nativeSymbol}`} value={fmtNative(quote.nativeBalance)} />
@@ -308,6 +319,7 @@ export default function Send() {
             setAmountText(t.replace(/[^0-9.,]/g, ''));
             setError(null);
           }}
+          editable={amountReady}
           keyboardType="decimal-pad"
           placeholder={dollarEntry ? '$0.00' : `0 ${asset.symbol}`}
           placeholderTextColor={colors.border}

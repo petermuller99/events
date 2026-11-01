@@ -9,6 +9,12 @@ import type { NetworkMode } from './config';
 
 export const BITCOIN_PATH = "m/84'/0'/0'/0/0";
 
+/**
+ * Highest fee rate (sat/vB) the wallet will ever pay. Even busy days rarely pass a few
+ * hundred; anything above this means the fee service is wrong or lying.
+ */
+export const MAX_FEE_RATE = 1000;
+
 export interface BitcoinKey {
   /** Mainnet address (bc1q…). */
   address: string;
@@ -118,8 +124,13 @@ export class BitcoinClient {
     const r = await this.get<{ fastestFee: number; halfHourFee: number; hourFee: number; economyFee: number; minimumFee: number }>(
       '/v1/fees/recommended',
     );
-    const atLeast = (n: number) => Math.max(1, Math.ceil(n));
-    return { slow: atLeast(r.economyFee), normal: atLeast(r.hourFee), fast: atLeast(r.fastestFee) };
+    const rate = (n: unknown) => {
+      if (typeof n !== 'number' || !Number.isFinite(n)) throw new Error('Could not read Bitcoin network fees');
+      const v = Math.max(1, Math.ceil(n));
+      if (v > MAX_FEE_RATE) throw new Error('Bitcoin network fees look unusually high right now. Try again later.');
+      return v;
+    };
+    return { slow: rate(r.economyFee), normal: rate(r.hourFee), fast: rate(r.fastestFee) };
   }
 
   /** Newest transactions touching the address (confirmed and waiting). */
@@ -133,6 +144,7 @@ export class BitcoinClient {
   }
 
   /** Broadcasts a signed transaction (hex) and returns its txid. */
+  /** Sends a signed payment. Returns the txid the network reported (callers use their own). */
   async broadcast(hex: string): Promise<string> {
     const res = await this.fetchFn(`${this.apiUrl}/tx`, { method: 'POST', body: hex });
     const text = await res.text();
@@ -153,6 +165,7 @@ export function planTransfer(
   amount: bigint,
   feeRate: number,
 ): BitcoinPlan {
+  if (!Number.isInteger(feeRate) || feeRate < 1 || feeRate > MAX_FEE_RATE) throw new Error('Unusual Bitcoin fee rate');
   const net = network(mode);
   const from = btc.p2wpkh(hexToBytes(key.publicKey), net);
   const inputs = utxos.map((u) => ({

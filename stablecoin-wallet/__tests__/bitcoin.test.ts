@@ -53,6 +53,11 @@ describe('Bitcoin transfers', () => {
     for (let i = 0; i < tx.inputsLength; i++) expect(spent).toContain(Buffer.from(tx.getInput(i).txid!).toString('hex'));
   });
 
+  it('refuses absurd fee rates', () => {
+    expect(() => planTransfer(key, 'mainnet', utxos, to, 20_000n, 5_000)).toThrow(/fee rate/);
+    expect(() => planTransfer(key, 'mainnet', utxos, to, 20_000n, 0)).toThrow(/fee rate/);
+  });
+
   it('refuses when the balance can’t cover amount and fee', () => {
     expect(() => planTransfer(key, 'mainnet', utxos, to, 79_900n, 10)).toThrow(/Not enough bitcoin/);
   });

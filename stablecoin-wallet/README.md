@@ -47,8 +47,10 @@ used here ships with Expo Go, so no custom build is needed to try the app. (On i
 can't use Face ID for third-party apps, so it falls back to the passcode; a real build uses
 Face ID.)
 
-For store builds use EAS (`npx eas-cli@latest build`). Set your own `ios.bundleIdentifier` and
-`android.package` in `app.json` first; they are placeholders (`com.example…`).
+Release APKs are signed with Pearl Wallet's private key (`plugins/withReleaseSigning.js`).
+CI reads it from the `PEARL_KEYSTORE_BASE64` and `PEARL_KEYSTORE_PASSWORD` repository secrets
+and checks the signed APK against `RELEASE_CERT_SHA256` in the workflow. Without the key the
+release APK is left unsigned; it is never signed with the public debug key.
 
 ## Testing with free test tokens
 

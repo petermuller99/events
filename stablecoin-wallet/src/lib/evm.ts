@@ -49,6 +49,8 @@ export interface EvmFeeQuote {
   gasLimit: bigint;
   /** Worst-case fee per gas the transaction is allowed to pay. */
   feePerGas: bigint;
+  /** EIP-1559 tip, at most feePerGas; undefined for legacy (gasPrice) fees. */
+  priorityFeePerGas?: bigint;
   maxFee: bigint;
 }
 
@@ -65,9 +67,14 @@ export async function estimateTransfer(chain: ChainConfig, req: EvmTransferReque
   const [estimate, feeData] = await Promise.all([provider.estimateGas(tx), provider.getFeeData()]);
   // 20% headroom; unused gas is not charged.
   const gasLimit = (estimate * 120n) / 100n;
-  const feePerGas = feeData.maxFeePerGas ?? feeData.gasPrice;
-  if (feePerGas == null) throw new Error('Could not read network fees');
-  return { gasLimit, feePerGas, maxFee: gasLimit * feePerGas };
+  if (feeData.maxFeePerGas != null) {
+    const feePerGas = feeData.maxFeePerGas;
+    const tip = feeData.maxPriorityFeePerGas ?? 0n;
+    const priorityFeePerGas = tip < feePerGas ? tip : feePerGas;
+    return { gasLimit, feePerGas, priorityFeePerGas, maxFee: gasLimit * feePerGas };
+  }
+  if (feeData.gasPrice == null) throw new Error('Could not read network fees');
+  return { gasLimit, feePerGas: feeData.gasPrice, maxFee: gasLimit * feeData.gasPrice };
 }
 
 export async function sendTransfer(
@@ -79,6 +86,14 @@ export async function sendTransfer(
   const wallet = new Wallet(privateKey, getProvider(chain));
   if (wallet.address !== req.from) throw new Error('Key does not match sender');
   const tx = await buildTx(chain, req);
-  const sent = await wallet.sendTransaction({ ...tx, gasLimit: quote.gasLimit });
+  // Sign exactly the fee the user approved. Without these fields ethers would ask the
+  // RPC for fees again after confirmation, and a bad RPC could make the fee much higher.
+  const fees =
+    quote.priorityFeePerGas != null
+      ? { type: 2, maxFeePerGas: quote.feePerGas, maxPriorityFeePerGas: quote.priorityFeePerGas }
+      : { type: 0, gasPrice: quote.feePerGas };
+  const request = { ...tx, ...fees, gasLimit: quote.gasLimit };
+  if (quote.gasLimit * quote.feePerGas > quote.maxFee) throw new Error('Fee changed, please review again');
+  const sent = await wallet.sendTransaction(request);
   return sent.hash;
 }

@@ -4,6 +4,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // The app knows its own build number (set by CI) and looks for a newer release.
 
 const RELEASES_URL = 'https://api.github.com/repos/petermuller99/events/releases?per_page=20';
+/** The Update button only ever opens a page under this. */
+export const RELEASE_PAGE_PREFIX = 'https://github.com/petermuller99/events/releases/';
 const TAG = /^pearl-wallet-test-(\d+)$/;
 const KEY = 'pearl.update.v1';
 /** Check at most this often, unless asked from Settings. Short, so a new build shows up soon. */
@@ -30,7 +32,7 @@ export function latestRelease(releases: Release[]): UpdateInfo | null {
   let best: UpdateInfo | null = null;
   for (const r of releases) {
     const m = TAG.exec(r.tag_name ?? '');
-    if (!m || r.draft || !r.html_url || !r.assets?.some((a) => a.name?.endsWith('.apk'))) continue;
+    if (!m || r.draft || !r.html_url?.startsWith(RELEASE_PAGE_PREFIX) || r.html_url.includes('..') || !r.assets?.some((a) => a.name?.endsWith('.apk'))) continue;
     const build = Number(m[1]);
     if (!best || build > best.build) best = { build, url: r.html_url };
   }

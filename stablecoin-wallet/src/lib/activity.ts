@@ -101,6 +101,9 @@ export function fromTransferLogs(chain: ChainConfig, owner: string, logs: Transf
   for (const log of logs) {
     const token = chain.tokens.find((t) => t.address.toLowerCase() === log.token.toLowerCase());
     if (!token) continue;
+    // Zero-amount transfers are what address-poisoning scams use: anyone can make a 0 USDT
+    // "transfer from you" to a look-alike address so it shows up in your history.
+    if (log.value <= 0n) continue;
     const incoming = log.to.toLowerCase() === owner.toLowerCase();
     if (!incoming && log.from.toLowerCase() !== owner.toLowerCase()) continue;
     const direction = incoming ? 'in' : 'out';

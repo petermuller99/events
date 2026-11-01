@@ -23,6 +23,14 @@ describe('EVM log parsing', () => {
     ]);
     expect(item).toMatchObject({ direction: 'in', symbol: 'USDC', amount: '7', counterparty: OTHER_EVM, status: 'confirmed' });
   });
+
+  it('drops zero-amount transfers (address poisoning)', () => {
+    const items = fromTransferLogs(sepolia, ME_EVM, [
+      { token: SEPOLIA_USDC, from: ME_EVM, to: OTHER_EVM, value: 0n, hash: '0x01', timestamp: 9 },
+      { token: SEPOLIA_USDC, from: OTHER_EVM, to: ME_EVM, value: 0n, hash: '0x02', timestamp: 9 },
+    ]);
+    expect(items).toEqual([]);
+  });
 });
 
 describe('mergeItems', () => {

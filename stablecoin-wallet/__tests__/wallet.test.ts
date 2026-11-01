@@ -2,7 +2,7 @@ import { getAddress } from 'ethers';
 import { formatAmount, formatDollars, parseAmount, toInputAmount } from '../src/lib/amount';
 import { CHAINS, CHAIN_IDS } from '../src/lib/config';
 import { decodeAddress } from '../src/lib/solana';
-import { listAssets, validateRecipient } from '../src/lib/wallet';
+import { listAssets, normalizeRecipient, validateRecipient } from '../src/lib/wallet';
 
 describe('token config', () => {
   for (const mode of ['mainnet', 'testnet'] as const) {
@@ -63,6 +63,11 @@ describe('validateRecipient', () => {
     expect(validateRecipient('ethereum', btc)).toMatch(/Bitcoin address/);
     expect(validateRecipient('solana', '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa')).toMatch(/Bitcoin address/);
     expect(validateRecipient('bitcoin', btc, btc)).toMatch(/own address/);
+    // QR codes often carry bech32 addresses in capitals.
+    expect(normalizeRecipient('bitcoin', ` ${btc.toUpperCase()} `)).toBe(btc);
+    expect(validateRecipient('bitcoin', btc.toUpperCase())).toBeNull();
+    expect(validateRecipient('bitcoin', btc.toUpperCase(), btc)).toMatch(/own address/);
+    expect(normalizeRecipient('bitcoin', '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa')).toBe('1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa');
   });
 
   it('flags the wallet sending to itself', () => {

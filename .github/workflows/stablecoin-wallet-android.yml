@@ -17,7 +17,10 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  APP_ID: com.example.stablecoinwallet
+  APP_ID: com.pearlwallet.app
+  # SHA-256 of Pearl Wallet's release signing certificate (public; the key itself is
+  # only in the PEARL_KEYSTORE_BASE64 secret). The build fails if the APK doesn't match.
+  RELEASE_CERT_SHA256: 9530a4250a22162aa34aaf3dc93a94e4705c9caec9765bc8f282d413eb571661
 
 jobs:
   build:
@@ -68,12 +71,38 @@ jobs:
       - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install
 
-      # Signed with the template's shared debug key: fine for testing, and later
-      # builds install over earlier ones. Store releases need a private key.
+      # Pearl Wallet's private signing key, from repository secrets. Never the
+      # template's public debug key: anyone could sign a fake "update" with that.
+      - name: Signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.PEARL_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.PEARL_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "::error::Add the PEARL_KEYSTORE_BASE64 and PEARL_KEYSTORE_PASSWORD repository secrets to sign the app."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/pearl-release.p12"
+          echo "PEARL_KEYSTORE_FILE=$RUNNER_TEMP/pearl-release.p12" >> "$GITHUB_ENV"
+
       # x86_64 is included so the emulator smoke test can run the same APK.
       - name: Build APK
         working-directory: stablecoin-wallet/android
+        env:
+          PEARL_KEYSTORE_PASSWORD: ${{ secrets.PEARL_KEYSTORE_PASSWORD }}
+          PEARL_KEY_PASSWORD: ${{ secrets.PEARL_KEYSTORE_PASSWORD }}
+          PEARL_KEY_ALIAS: pearl
         run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a,x86_64 --no-daemon
+
+      - name: Check the APK is signed with Pearl Wallet's key
+        run: |
+          rm -f "$RUNNER_TEMP/pearl-release.p12"
+          APKSIGNER="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner"
+          "$APKSIGNER" verify --print-certs android/app/build/outputs/apk/release/app-release.apk | tee certs.txt
+          grep -qi "certificate SHA-256 digest: $RELEASE_CERT_SHA256" certs.txt || {
+            echo "::error::The APK isn't signed with the expected release key."; exit 1; }
+          [ "$(grep -c 'certificate SHA-256 digest' certs.txt)" = 1 ] || {
+            echo "::error::Expected exactly one signer."; exit 1; }
 
       - name: Rename APK
         run: cp android/app/build/outputs/apk/release/app-release.apk pearl-wallet-test.apk

@@ -177,13 +177,23 @@ export function fetchAllBalances(mode: NetworkMode, keys: WalletKeys): Promise<C
 }
 
 /** Returns an error message, or null if `to` is a valid recipient on this chain. */
+/**
+ * The address as it should be used: trimmed, and for Bitcoin's bc1/tb1 addresses (which
+ * QR codes often write in capitals) in lowercase, the form the wallet compares and signs.
+ */
+export function normalizeRecipient(chainId: ChainId, to: string): string {
+  const value = to.trim();
+  if (chainId === 'bitcoin' && /^(bc1|tb1)/i.test(value)) return value.toLowerCase();
+  return value;
+}
+
 export function validateRecipient(
   chainId: ChainId,
   to: string,
   ownAddress?: string,
   mode: NetworkMode = 'mainnet',
 ): string | null {
-  const value = to.trim();
+  const value = normalizeRecipient(chainId, to);
   if (!value) return 'Enter a recipient address';
   if (isValidTronAddress(value)) return 'This is a Tron address. Pearl Wallet doesn’t support Tron.';
   if (chainId === 'bitcoin') {
@@ -253,7 +263,7 @@ export async function quoteTransfer(
 ): Promise<FeeQuote> {
   const chain = getChain(mode, req.asset.chain);
   const from = addressFor(keys, req.asset.chain, mode);
-  const to = req.to.trim();
+  const to = normalizeRecipient(req.asset.chain, req.to);
   await verifyDecimals(chain, req.asset);
 
   if (chain.kind === 'bitcoin') {
@@ -262,9 +272,13 @@ export async function quoteTransfer(
     const nativeBalance = utxos.reduce((sum, u) => sum + BigInt(u.value), 0n);
     const plan = planTransfer(keys.bitcoin, mode, utxos, to, req.amount, rates[req.speed ?? 'normal']);
     const fee = BigInt(plan.fee);
-    const notes = utxos.some((u) => !u.status.confirmed)
-      ? ['Some of your bitcoin is still arriving and is being used for this payment.']
-      : [];
+    const notes: string[] = [];
+    if (fee * 10n > req.amount) {
+      notes.push('The network fee is more than a tenth of what you’re sending. Sending more at once, or choosing Slow, costs less.');
+    }
+    if (utxos.some((u) => !u.status.confirmed)) {
+      notes.push('Some of your bitcoin is still arriving and is being used for this payment.');
+    }
     return { fee, isMaximum: false, nativeBalance, nativeRequired: fee + req.amount, notes, bitcoinPlan: plan };
   }
 
@@ -343,12 +357,13 @@ export async function sendTransfer(
 ): Promise<SendResult> {
   const chain = getChain(mode, req.asset.chain);
   const from = addressFor(keys, req.asset.chain, mode);
-  const to = req.to.trim();
+  const to = normalizeRecipient(req.asset.chain, req.to);
   if (chain.kind === 'bitcoin') {
     if (!quote.bitcoinPlan) throw new Error('Missing fee quote');
     const signed = signPlan(keys.bitcoin, mode, quote.bitcoinPlan, to, req.amount);
-    const hash = await bitcoinClient(chain).broadcast(signed.hex);
-    return { hash, explorerUrl: chain.explorerTxUrl(hash) };
+    // Use the txid of what we signed, not whatever the server answers, for tracking and links.
+    await bitcoinClient(chain).broadcast(signed.hex);
+    return { hash: signed.txid, explorerUrl: chain.explorerTxUrl(signed.txid) };
   }
   const privateKey = privateKeyFor(keys, req.asset.chain);
   let hash: string;

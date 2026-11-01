@@ -3,13 +3,19 @@ import { latestRelease, newerThan } from '../src/lib/updates';
 describe('app updates', () => {
   const rel = (n: number, apk = true) => ({
     tag_name: `pearl-wallet-test-${n}`,
-    html_url: `https://github.com/x/releases/tag/pearl-wallet-test-${n}`,
+    html_url: `https://github.com/petermuller99/events/releases/tag/pearl-wallet-test-${n}`,
     assets: apk ? [{ name: 'pearl-wallet-test.apk' }] : [],
   });
 
   it('finds the newest build with an APK', () => {
     expect(latestRelease([rel(21), rel(24, false), rel(23), { tag_name: 'v9' }])?.build).toBe(23);
     expect(latestRelease([])).toBeNull();
+  });
+
+  it('ignores releases whose page is anywhere but this repo’s releases', () => {
+    const evil = { ...rel(99), html_url: 'https://evil.example/pearl.apk' };
+    const lookalike = { ...rel(98), html_url: 'https://github.com/petermuller99/events/releases/../../attacker/x' };
+    expect(latestRelease([rel(21), evil, lookalike])?.build).toBe(21);
   });
 
   it('offers only a newer build, and nothing in development builds', () => {

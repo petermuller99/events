@@ -12,9 +12,17 @@ const COIN_IDS: Record<ChainId, string> = {
 /** Dollar price of each network's fee coin, in millionths of a dollar. */
 export type NativePrices = Partial<Record<ChainId, bigint>>;
 
-const KEY = 'pearl.prices.v1';
+const KEY = 'pearl.prices.v2';
 const FRESH_MS = 2 * 60_000;
+/** Prices older than this aren't used to work out how much Bitcoin to send. */
+export const SEND_PRICE_MAX_AGE_MS = 10 * 60_000;
 let cache: { at: number; prices: NativePrices } | null = null;
+let lastAt: number | null = null;
+
+/** When the prices last returned by fetchNativePrices were fetched (ms), or null if unknown. */
+export function pricesFetchedAt(): number | null {
+  return lastAt;
+}
 let changes: Partial<Record<ChainId, number>> = {};
 
 /** Price change over the last 24 hours in percent, once prices have been fetched. */
@@ -57,7 +65,10 @@ export function parsePrices(json: unknown): NativePrices {
  * price service can't be reached, or to none at all.
  */
 export async function fetchNativePrices(): Promise<NativePrices> {
-  if (cache && Date.now() - cache.at < FRESH_MS) return cache.prices;
+  if (cache && Date.now() - cache.at < FRESH_MS) {
+    lastAt = cache.at;
+    return cache.prices;
+  }
   try {
     const ids = Object.values(COIN_IDS).join(',');
     const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`);
@@ -67,16 +78,22 @@ export async function fetchNativePrices(): Promise<NativePrices> {
     changes = parseChanges(json);
     if (!Object.keys(prices).length) throw new Error('No prices returned');
     cache = { at: Date.now(), prices };
+    lastAt = cache.at;
     const stored = Object.fromEntries(Object.entries(prices).map(([k, v]) => [k, String(v)]));
-    AsyncStorage.setItem(KEY, JSON.stringify(stored)).catch(() => {});
+    AsyncStorage.setItem(KEY, JSON.stringify({ at: cache.at, prices: stored })).catch(() => {});
     return prices;
   } catch {
-    if (cache) return cache.prices;
+    if (cache) {
+      lastAt = cache.at;
+      return cache.prices;
+    }
+    lastAt = null;
     try {
       const raw = await AsyncStorage.getItem(KEY);
       if (!raw) return {};
-      const stored = JSON.parse(raw) as Record<string, string>;
-      return Object.fromEntries(Object.entries(stored).map(([k, v]) => [k, BigInt(v)])) as NativePrices;
+      const stored = JSON.parse(raw) as { at?: number; prices?: Record<string, string> };
+      if (typeof stored.at === 'number') lastAt = stored.at;
+      return Object.fromEntries(Object.entries(stored.prices ?? {}).map(([k, v]) => [k, BigInt(v)])) as NativePrices;
     } catch {
       return {};
     }
