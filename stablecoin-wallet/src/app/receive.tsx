@@ -33,7 +33,7 @@ export default function Receive() {
     saveGiftSettings(next).catch(() => {});
   };
   const chain = getChain(mode, chainId);
-  const address = addressFor(keys, chainId);
+  const address = addressFor(keys, chainId, mode);
   const tokens = chain.tokens.map((t) => t.symbol).join(' or ');
 
   const copy = async () => {
@@ -71,9 +71,13 @@ export default function Receive() {
         <Button title={copied ? 'Copied' : 'Copy address'} onPress={copy} style={{ alignSelf: 'stretch' }} />
       </Card>
       <Banner tone="warning">
-        Only send {tokens} ({chain.standard}) or {chain.nativeSymbol} on {chain.name} to this address.
-        Tokens sent from another network may be lost.
+        {chain.kind === 'bitcoin'
+          ? `Only send ${chain.nativeSymbol} on the ${chain.name} network to this address. Payments take about 10–60 minutes to arrive.`
+          : `Only send ${tokens} (${chain.standard}) or ${chain.nativeSymbol} on ${chain.name} to this address. Tokens sent from another network may be lost.`}
       </Banner>
+      {chain.kind === 'bitcoin' ? (
+        <Body muted>The same 12 words open this address in BlueWallet or Trust Wallet.</Body>
+      ) : null}
       {chain.kind === 'evm' ? (
         <Body muted>This same address also receives on the other EVM network (Ethereum and BSC).</Body>
       ) : null}

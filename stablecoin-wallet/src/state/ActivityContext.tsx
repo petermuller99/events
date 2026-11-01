@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { AppState } from 'react-native';
 import { Celebration, type CelebrationEvent } from '../components/Celebration';
 import type { ActivityItem } from '../lib/activity';
+import { bitcoinAddress } from '../lib/bitcoin';
 import { disableBackgroundCheck, enableBackgroundCheck } from '../lib/background';
 import { notifyOutcome, requestNotificationPermission } from '../lib/notify';
 import {
@@ -48,8 +49,11 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
   const prefsRef = useRef(prefs);
 
   const addresses = useMemo(
-    () => (keys ? { evm: keys.evm.address, solana: keys.solana.address } : null),
-    [keys],
+    () =>
+      keys
+        ? { evm: keys.evm.address, solana: keys.solana.address, bitcoin: bitcoinAddress(keys.bitcoin, mode) }
+        : null,
+    [keys, mode],
   );
 
   useEffect(() => {

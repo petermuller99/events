@@ -18,7 +18,8 @@ describe('token config', () => {
   }
 
   it('lists tokens before the native coin', () => {
-    expect(listAssets('mainnet', 'bsc').map((a) => a.symbol)).toEqual(['USDT', 'USDC', 'BNB']);
+    expect(listAssets('mainnet', 'bsc').map((a) => a.symbol)).toEqual(['USDT', 'BNB']);
+    expect(listAssets('mainnet', 'bitcoin').map((a) => a.symbol)).toEqual(['BTC']);
     expect(listAssets('mainnet', 'solana').map((a) => a.symbol)).toEqual(['USDC', 'USDT', 'SOL']);
   });
 });
@@ -50,6 +51,18 @@ describe('validateRecipient', () => {
     expect(validateRecipient('ethereum', sol)).toMatch(/Solana address/);
     expect(validateRecipient('bsc', sol)).toMatch(/Solana address/);
     expect(validateRecipient('solana', sol, sol)).toMatch(/own address/);
+  });
+
+  it('checks Bitcoin addresses and keeps them off the other networks', () => {
+    const btc = 'bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu';
+    expect(validateRecipient('bitcoin', btc)).toBeNull();
+    expect(validateRecipient('bitcoin', btc, undefined, 'testnet')).toMatch(/real-money Bitcoin address/);
+    expect(validateRecipient('bitcoin', evmAddr)).toMatch(/Ethereum\/BSC/);
+    expect(validateRecipient('bitcoin', '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM')).toMatch(/Solana address/);
+    expect(validateRecipient('bitcoin', btc.slice(0, -1) + 'v')).toMatch(/Not a valid Bitcoin/);
+    expect(validateRecipient('ethereum', btc)).toMatch(/Bitcoin address/);
+    expect(validateRecipient('solana', '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa')).toMatch(/Bitcoin address/);
+    expect(validateRecipient('bitcoin', btc, btc)).toMatch(/own address/);
   });
 
   it('flags the wallet sending to itself', () => {

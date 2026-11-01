@@ -146,7 +146,7 @@ export default function Settings() {
           subtitle={mode === 'testnet' ? 'On: practising with free test coins' : 'Practise with free test coins'}
           right={<Toggle label="Test money" value={mode === 'testnet'} onChange={setTestMoney} />}
         />
-        <ListRow title="Networks" subtitle="Ethereum · BNB Chain · Solana" />
+        <ListRow title="Networks" subtitle="Bitcoin · Ethereum · BNB Chain · Solana" />
         <ListRow title="Show my secret words" right={chevron} onPress={() => router.push('/phrase')} />
         <ListRow title="My addresses" right={chevron} onPress={() => router.push('/addresses')} />
         <ListRow last title="Lock now" right={chevron} onPress={lock} />

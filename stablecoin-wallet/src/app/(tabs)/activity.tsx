@@ -65,7 +65,7 @@ export default function Activity() {
               <LinkButton
                 key={id}
                 title={chain.explorerName}
-                onPress={() => Linking.openURL(chain.explorerAddressUrl(addressFor(keys, id)))}
+                onPress={() => Linking.openURL(chain.explorerAddressUrl(addressFor(keys, id, mode)))}
               />
             );
           })}

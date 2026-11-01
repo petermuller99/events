@@ -1,11 +1,12 @@
 import { getAddress } from 'ethers';
+import { netChange, type EsploraTx } from './bitcoin';
 import type { ChainConfig, ChainId, NetworkMode } from './config';
 import type { SolanaParsedTx, SolanaTokenBalance } from './solana';
 import type { AssetId } from './wallet';
 
 // Activity = money in and out of this wallet. Items come from three places:
 //  - sends made in this app (recorded as pending, then tracked until confirmed),
-//  - chain data: Transfer event logs on Ethereum/BSC, transactions on Solana,
+//  - chain data: Transfer event logs on Ethereum/BSC, transactions on Solana and Bitcoin,
 //  - native coin balance going up on Ethereum/BSC (logs don't cover plain ETH/BNB).
 
 export type ActivityStatus = 'pending' | 'confirmed' | 'failed';
@@ -48,6 +49,41 @@ export function emptyState(): ActivityState {
 
 export function activityId(chain: ChainId, hash: string, assetId: AssetId, direction: 'in' | 'out'): string {
   return `${chain}:${hash.toLowerCase()}:${assetId}:${direction}`;
+}
+
+/**
+ * Bitcoin transactions of `owner` (Esplora format). Only confirmed ones: money that is
+ * still on its way shows up once it lands. A send's amount excludes its fee.
+ */
+export function fromBitcoinTxs(chain: ChainConfig, owner: string, txs: EsploraTx[]): ActivityItem[] {
+  const out: ActivityItem[] = [];
+  for (const tx of txs) {
+    if (!tx.status.confirmed) continue;
+    const net = netChange(tx, owner);
+    if (net === 0n) continue;
+    const direction = net > 0n ? 'in' : 'out';
+    const amount = direction === 'in' ? net : -net - BigInt(tx.fee);
+    if (amount <= 0n) continue;
+    const counterparty =
+      direction === 'in'
+        ? tx.vin.find((i) => i.prevout?.scriptpubkey_address && i.prevout.scriptpubkey_address !== owner)?.prevout
+            ?.scriptpubkey_address
+        : tx.vout.find((o) => o.scriptpubkey_address && o.scriptpubkey_address !== owner)?.scriptpubkey_address;
+    out.push({
+      id: activityId(chain.id, tx.txid, 'native', direction),
+      chain: chain.id,
+      assetId: 'native',
+      symbol: chain.nativeSymbol,
+      decimals: chain.nativeDecimals,
+      direction,
+      amount: amount.toString(),
+      counterparty,
+      hash: tx.txid,
+      timestamp: (tx.status.block_time ?? Math.floor(Date.now() / 1000)) * 1000,
+      status: 'confirmed',
+    });
+  }
+  return out;
 }
 
 /** A Transfer(address,address,uint256) log, already decoded. */

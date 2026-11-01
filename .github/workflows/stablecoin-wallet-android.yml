@@ -58,6 +58,13 @@ jobs:
           SOLANA_LIVE: '1'
         run: npx jest __tests__/solana.live.test.ts
 
+      # Same for Bitcoin: checks the mempool.space API answers the way the app expects.
+      - name: Bitcoin network check
+        continue-on-error: true
+        env:
+          BITCOIN_LIVE: '1'
+        run: npx jest __tests__/bitcoin.live.test.ts
+
       - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install
 

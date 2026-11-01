@@ -3,6 +3,7 @@ import { id as keccakId, zeroPadValue } from 'ethers';
 import {
   activityId,
   emptyState,
+  fromBitcoinTxs,
   fromSolanaTx,
   fromTransferLogs,
   mergeItems,
@@ -13,6 +14,7 @@ import {
   type TransferLog,
 } from './activity';
 import { CHAIN_IDS, getChain, type ChainConfig, type ChainId, type NetworkMode } from './config';
+import { BitcoinClient } from './bitcoin';
 import * as evm from './evm';
 import { associatedTokenAddress, SolanaClient } from './solana';
 
@@ -20,6 +22,8 @@ export interface WatchedAddresses {
   evm: string;
   /** Missing in watch state saved by versions before Solana support. */
   solana?: string;
+  /** Missing in watch state saved by versions before Bitcoin support. */
+  bitcoin?: string;
 }
 
 export interface SyncOutcome {
@@ -40,6 +44,8 @@ const PENDING_TIMEOUT_MS: Record<ChainConfig['kind'], number> = {
   evm: 6 * 3600_000,
   // A Solana transaction expires with its blockhash after about a minute.
   solana: 5 * 60_000,
+  // An unconfirmed Bitcoin payment can wait in line for days when fees are low.
+  bitcoin: 3 * 86_400_000,
 };
 /** Solana: how many recent signatures to look at per address, and how many to remember. */
 const SOLANA_SIGNATURES = 10;
@@ -78,6 +84,17 @@ interface ChainSync {
   cursor?: number;
   nativeBalance?: string;
   seen?: string[];
+}
+
+const bitcoinClients = new Map<string, BitcoinClient>();
+function bitcoin(chain: ChainConfig): BitcoinClient {
+  let c = bitcoinClients.get(chain.rpcUrl);
+  if (!c) bitcoinClients.set(chain.rpcUrl, (c = new BitcoinClient(chain.rpcUrl)));
+  return c;
+}
+
+async function syncBitcoin(chain: ChainConfig, owner: string): Promise<ChainSync> {
+  return { items: fromBitcoinTxs(chain, owner, await bitcoin(chain).getTransactions(owner)) };
 }
 
 const solanaClients = new Map<string, SolanaClient>();
@@ -166,9 +183,11 @@ async function syncEvm(chain: ChainConfig, owner: string, state: ActivityState):
 
 async function checkPending(chain: ChainConfig, item: ActivityItem): Promise<ActivityItem['status']> {
   const status =
-    chain.kind === 'solana'
-      ? await solana(chain).getStatus(item.hash)
-      : await evm.getProvider(chain).getTransactionReceipt(item.hash).then((r) =>
+    chain.kind === 'bitcoin'
+      ? await bitcoin(chain).getStatus(item.hash)
+      : chain.kind === 'solana'
+        ? await solana(chain).getStatus(item.hash)
+        : await evm.getProvider(chain).getTransactionReceipt(item.hash).then((r) =>
         r == null ? 'pending' : r.status === 1 ? 'confirmed' : 'failed',
       );
   if (status === 'pending' && Date.now() - item.timestamp > PENDING_TIMEOUT_MS[chain.kind]) return 'failed';
@@ -193,11 +212,15 @@ async function doSync(mode: NetworkMode, addresses: WatchedAddresses): Promise<S
   const results = await Promise.all(
     CHAIN_IDS.map(async (id): Promise<[ChainId, ChainSync | null]> => {
       const chain = getChain(mode, id);
-      const owner = id === 'solana' ? addresses.solana : addresses.evm;
+      const owner = id === 'bitcoin' ? addresses.bitcoin : id === 'solana' ? addresses.solana : addresses.evm;
       if (!owner) return [id, null];
       try {
         const result =
-          chain.kind === 'solana' ? await syncSolana(chain, owner, state) : await syncEvm(chain, owner, state);
+          chain.kind === 'bitcoin'
+            ? await syncBitcoin(chain, owner)
+            : chain.kind === 'solana'
+              ? await syncSolana(chain, owner, state)
+              : await syncEvm(chain, owner, state);
         return [id, result];
       } catch {
         return [id, null];

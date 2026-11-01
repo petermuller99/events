@@ -1,10 +1,10 @@
-export type ChainId = 'ethereum' | 'bsc' | 'solana';
+export type ChainId = 'bitcoin' | 'ethereum' | 'bsc' | 'solana';
 export type NetworkMode = 'testnet' | 'mainnet';
 export type TokenSymbol = 'USDT' | 'USDC';
 
 export interface TokenConfig {
   symbol: TokenSymbol;
-  /** EVM: 0x… checksummed address. Solana: base58 mint address. */
+  /** EVM: 0x… checksummed address. Solana: base58 mint address. (Bitcoin has no tokens.) */
   address: string;
   /** Expected decimals. Checked against the contract at runtime before use. */
   decimals: number;
@@ -13,12 +13,12 @@ export interface TokenConfig {
 export interface ChainConfig {
   id: ChainId;
   name: string;
-  standard: 'ERC-20' | 'BEP-20' | 'SPL';
-  kind: 'evm' | 'solana';
+  standard: 'ERC-20' | 'BEP-20' | 'SPL' | 'Bitcoin';
+  kind: 'evm' | 'solana' | 'bitcoin';
   nativeSymbol: string;
   nativeDecimals: number;
   rpcUrl: string;
-  /** EVM chain id; undefined for Solana. */
+  /** EVM chain id; undefined for Solana and Bitcoin. */
   chainId?: number;
   explorerName: string;
   explorerTxUrl: (hash: string) => string;
@@ -28,7 +28,7 @@ export interface ChainConfig {
   tokens: TokenConfig[];
 }
 
-export const CHAIN_IDS: ChainId[] = ['ethereum', 'bsc', 'solana'];
+export const CHAIN_IDS: ChainId[] = ['bitcoin', 'ethereum', 'bsc', 'solana'];
 
 // Each URL can be overridden at build time, e.g. EXPO_PUBLIC_ETHEREUM_RPC_URL=https://…
 // Expo only inlines EXPO_PUBLIC_* variables written out literally, hence no loop.
@@ -39,10 +39,25 @@ const env = {
   bscTestnet: process.env.EXPO_PUBLIC_BSC_TESTNET_RPC_URL,
   solanaMainnet: process.env.EXPO_PUBLIC_SOLANA_RPC_URL,
   solanaTestnet: process.env.EXPO_PUBLIC_SOLANA_DEVNET_RPC_URL,
+  bitcoinMainnet: process.env.EXPO_PUBLIC_BITCOIN_API_URL,
+  bitcoinTestnet: process.env.EXPO_PUBLIC_BITCOIN_TESTNET_API_URL,
 };
 
 export const CHAINS: Record<NetworkMode, Record<ChainId, ChainConfig>> = {
   mainnet: {
+    bitcoin: {
+      id: 'bitcoin',
+      name: 'Bitcoin',
+      standard: 'Bitcoin',
+      kind: 'bitcoin',
+      nativeSymbol: 'BTC',
+      nativeDecimals: 8,
+      rpcUrl: env.bitcoinMainnet || 'https://mempool.space/api',
+      explorerName: 'mempool.space',
+      explorerTxUrl: (h) => `https://mempool.space/tx/${h}`,
+      explorerAddressUrl: (a) => `https://mempool.space/address/${a}`,
+      tokens: [],
+    },
     ethereum: {
       id: 'ethereum',
       name: 'Ethereum',
@@ -75,7 +90,6 @@ export const CHAINS: Record<NetworkMode, Record<ChainId, ChainConfig>> = {
       tokens: [
         // Binance-Peg tokens on BSC use 18 decimals, unlike Ethereum.
         { symbol: 'USDT', address: '0x55d398326f99059fF775485246999027B3197955', decimals: 18 },
-        { symbol: 'USDC', address: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', decimals: 18 },
       ],
     },
     solana: {
@@ -96,6 +110,20 @@ export const CHAINS: Record<NetworkMode, Record<ChainId, ChainConfig>> = {
     },
   },
   testnet: {
+    bitcoin: {
+      id: 'bitcoin',
+      name: 'Bitcoin Testnet',
+      standard: 'Bitcoin',
+      kind: 'bitcoin',
+      nativeSymbol: 'tBTC',
+      nativeDecimals: 8,
+      rpcUrl: env.bitcoinTestnet || 'https://mempool.space/testnet4/api',
+      explorerName: 'mempool.space',
+      explorerTxUrl: (h) => `https://mempool.space/testnet4/tx/${h}`,
+      explorerAddressUrl: (a) => `https://mempool.space/testnet4/address/${a}`,
+      faucetUrl: 'https://mempool.space/testnet4/faucet',
+      tokens: [],
+    },
     ethereum: {
       id: 'ethereum',
       name: 'Ethereum Sepolia',
@@ -127,7 +155,6 @@ export const CHAINS: Record<NetworkMode, Record<ChainId, ChainConfig>> = {
       faucetUrl: 'https://www.bnbchain.org/en/testnet-faucet',
       tokens: [
         { symbol: 'USDT', address: '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd', decimals: 18 },
-        { symbol: 'USDC', address: '0x64544969ed7EBf5f083679233325356EbE738930', decimals: 18 },
       ],
     },
     solana: {

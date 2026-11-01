@@ -22,6 +22,7 @@ import { useUnlockedWallet } from '../state/WalletContext';
 const LINE_COLORS: Record<string, string> = {
   USDT: '#26A17B',
   USDC: '#2775CA',
+  bitcoin: '#F7931A',
   ethereum: '#627EEA',
   bsc: '#E0A800',
   solana: '#14B87A',
@@ -130,6 +131,13 @@ export default function Coin() {
         </Text>
       ) : null}
 
+      {chainId === 'bitcoin' ? (
+        <View style={[s.note, { backgroundColor: '#FFF0C2' }]}>
+          <Text style={s.noteText}>
+            🐝 Bitcoin’s price goes up and down, sometimes a lot. Great for saving over years, not for spending today.
+          </Text>
+        </View>
+      ) : null}
       {stable ? (
         <View style={s.note}>
           <Text style={s.noteText}>

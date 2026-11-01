@@ -7,6 +7,16 @@ import {
   type NetworkMode,
   type TokenSymbol,
 } from './config';
+import {
+  bitcoinAddress,
+  BitcoinClient,
+  checkBitcoinAddress,
+  planTransfer,
+  signPlan,
+  TYPICAL_VBYTES,
+  type BitcoinPlan,
+  type BitcoinSpeed,
+} from './bitcoin';
 import * as evm from './evm';
 import type { WalletKeys } from './keys';
 import {
@@ -26,7 +36,7 @@ import {
 import { isValidTronAddress } from './tron-address';
 
 // Chain-agnostic API used by the screens. Everything below dispatches to the
-// EVM implementation (Ethereum, BSC) or the Solana one.
+// EVM implementation (Ethereum, BSC), the Solana one or the Bitcoin one.
 
 export type AssetId = 'native' | TokenSymbol;
 
@@ -50,12 +60,38 @@ function accountFor(keys: WalletKeys, chain: ChainId) {
   return chain === 'solana' ? keys.solana : keys.evm;
 }
 
-export function addressFor(keys: WalletKeys, chain: ChainId): string {
-  return accountFor(keys, chain).address;
+/** This wallet's address on a network. Bitcoin's differs between real and test money. */
+export function addressFor(keys: WalletKeys, chain: ChainId, mode: NetworkMode): string {
+  return chain === 'bitcoin' ? bitcoinAddress(keys.bitcoin, mode) : accountFor(keys, chain).address;
 }
 
 function privateKeyFor(keys: WalletKeys, chain: ChainId): string {
   return accountFor(keys, chain).privateKey;
+}
+
+const bitcoinClients = new Map<string, BitcoinClient>();
+export function bitcoinClient(chain: ChainConfig): BitcoinClient {
+  let client = bitcoinClients.get(chain.rpcUrl);
+  if (!client) bitcoinClients.set(chain.rpcUrl, (client = new BitcoinClient(chain.rpcUrl)));
+  return client;
+}
+
+export interface BitcoinFeeOption {
+  speed: BitcoinSpeed;
+  /** sat/vB */
+  rate: number;
+  /** Fee of a typical transfer at this rate, in satoshi. */
+  typicalFee: bigint;
+}
+
+/** Slow / normal / fast fee choices for the Send screen. */
+export async function bitcoinFeeOptions(mode: NetworkMode): Promise<BitcoinFeeOption[]> {
+  const rates = await bitcoinClient(getChain(mode, 'bitcoin')).getFeeRates();
+  return (['slow', 'normal', 'fast'] as const).map((speed) => ({
+    speed,
+    rate: rates[speed],
+    typicalFee: BigInt(rates[speed] * TYPICAL_VBYTES),
+  }));
 }
 
 export function listAssets(mode: NetworkMode, chainId: ChainId): Asset[] {
@@ -109,6 +145,7 @@ async function getBalance(chain: ChainConfig, asset: Asset, owner: string): Prom
     const client = solanaClient(chain);
     return asset.contract ? client.getTokenBalance(owner, asset.contract) : client.getSolBalance(owner);
   }
+  if (chain.kind === 'bitcoin') return bitcoinClient(chain).getBalance(owner);
   return asset.contract
     ? evm.getTokenBalance(chain, asset.contract, owner)
     : evm.getNativeBalance(chain, owner);
@@ -120,7 +157,7 @@ export async function fetchChainBalances(
   chainId: ChainId,
 ): Promise<ChainBalances> {
   const chain = getChain(mode, chainId);
-  const address = addressFor(keys, chainId);
+  const address = addressFor(keys, chainId, mode);
   const assets = listAssets(mode, chainId);
   // One coin failing (say, a token lookup) shouldn't hide the rest of the network.
   const results = await Promise.allSettled(assets.map((a) => getBalance(chain, a, address)));
@@ -140,10 +177,32 @@ export function fetchAllBalances(mode: NetworkMode, keys: WalletKeys): Promise<C
 }
 
 /** Returns an error message, or null if `to` is a valid recipient on this chain. */
-export function validateRecipient(chainId: ChainId, to: string, ownAddress?: string): string | null {
+export function validateRecipient(
+  chainId: ChainId,
+  to: string,
+  ownAddress?: string,
+  mode: NetworkMode = 'mainnet',
+): string | null {
   const value = to.trim();
   if (!value) return 'Enter a recipient address';
   if (isValidTronAddress(value)) return 'This is a Tron address. Pearl Wallet doesn’t support Tron.';
+  if (chainId === 'bitcoin') {
+    const check = checkBitcoinAddress(value, mode);
+    if (check === 'wrong-network') {
+      return mode === 'mainnet'
+        ? 'This is a test-money Bitcoin address. Real bitcoin can’t go there.'
+        : 'This is a real-money Bitcoin address. Switch off Test money to send there.';
+    }
+    if (check === 'invalid') {
+      if (value.startsWith('0x')) return 'This is an Ethereum/BSC address. Choose that network instead.';
+      if (checkSolanaAddress(value) === 'ok') return 'This is a Solana address. Choose the Solana network instead.';
+      return 'Not a valid Bitcoin address (check for typos)';
+    }
+    return ownAddress && value === ownAddress ? 'This is your own address' : null;
+  }
+  if (checkBitcoinAddress(value, 'mainnet') !== 'invalid' || checkBitcoinAddress(value, 'testnet') !== 'invalid') {
+    return 'This is a Bitcoin address. Choose the Bitcoin network instead.';
+  }
   if (chainId === 'solana') {
     if (value.startsWith('0x')) return 'This is an Ethereum/BSC address. Choose that network instead.';
     const check = checkSolanaAddress(value);
@@ -166,6 +225,8 @@ export interface TransferRequest {
   asset: Asset;
   to: string;
   amount: bigint;
+  /** Bitcoin only: how fast it should confirm (and how much fee to pay). */
+  speed?: BitcoinSpeed;
 }
 
 export interface FeeQuote {
@@ -181,6 +242,8 @@ export interface FeeQuote {
   setupFee?: bigint;
   /** Opaque data passed back to sendTransfer. */
   evmQuote?: evm.EvmFeeQuote;
+  /** Bitcoin: the coins to spend and outputs, checked again before signing. */
+  bitcoinPlan?: BitcoinPlan;
 }
 
 export async function quoteTransfer(
@@ -189,9 +252,21 @@ export async function quoteTransfer(
   req: TransferRequest,
 ): Promise<FeeQuote> {
   const chain = getChain(mode, req.asset.chain);
-  const from = addressFor(keys, req.asset.chain);
+  const from = addressFor(keys, req.asset.chain, mode);
   const to = req.to.trim();
   await verifyDecimals(chain, req.asset);
+
+  if (chain.kind === 'bitcoin') {
+    const client = bitcoinClient(chain);
+    const [utxos, rates] = await Promise.all([client.getUtxos(from), client.getFeeRates()]);
+    const nativeBalance = utxos.reduce((sum, u) => sum + BigInt(u.value), 0n);
+    const plan = planTransfer(keys.bitcoin, mode, utxos, to, req.amount, rates[req.speed ?? 'normal']);
+    const fee = BigInt(plan.fee);
+    const notes = utxos.some((u) => !u.status.confirmed)
+      ? ['Some of your bitcoin is still arriving and is being used for this payment.']
+      : [];
+    return { fee, isMaximum: false, nativeBalance, nativeRequired: fee + req.amount, notes, bitcoinPlan: plan };
+  }
 
   if (chain.kind === 'evm') {
     const [evmQuote, nativeBalance] = await Promise.all([
@@ -267,8 +342,14 @@ export async function sendTransfer(
   quote: FeeQuote,
 ): Promise<SendResult> {
   const chain = getChain(mode, req.asset.chain);
-  const from = addressFor(keys, req.asset.chain);
+  const from = addressFor(keys, req.asset.chain, mode);
   const to = req.to.trim();
+  if (chain.kind === 'bitcoin') {
+    if (!quote.bitcoinPlan) throw new Error('Missing fee quote');
+    const signed = signPlan(keys.bitcoin, mode, quote.bitcoinPlan, to, req.amount);
+    const hash = await bitcoinClient(chain).broadcast(signed.hex);
+    return { hash, explorerUrl: chain.explorerTxUrl(hash) };
+  }
   const privateKey = privateKeyFor(keys, req.asset.chain);
   let hash: string;
 

@@ -3,6 +3,7 @@ import type { ChainId } from './config';
 
 /** CoinGecko ids of each network's own coin (the fee coin). */
 const COIN_IDS: Record<ChainId, string> = {
+  bitcoin: 'bitcoin',
   ethereum: 'ethereum',
   bsc: 'binancecoin',
   solana: 'solana',

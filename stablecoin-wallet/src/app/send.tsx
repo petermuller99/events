@@ -25,6 +25,7 @@ import { authenticate } from '../lib/auth';
 import { CHAIN_IDS, getChain, type ChainId } from '../lib/config';
 import {
   addressFor,
+  bitcoinFeeOptions,
   errorMessage,
   fetchChainBalances,
   findAsset,
@@ -33,6 +34,7 @@ import {
   sendTransfer,
   validateRecipient,
   type AssetId,
+  type BitcoinFeeOption,
   type ChainBalances,
   type FeeQuote,
   type SendResult,
@@ -42,6 +44,8 @@ import { SendTracker } from '../components/SendTracker';
 import { activityId, pendingSend } from '../lib/activity';
 import { useActivity } from '../state/ActivityContext';
 import { useUnlockedWallet } from '../state/WalletContext';
+import type { BitcoinSpeed } from '../lib/bitcoin';
+import { fetchNativePrices, type NativePrices } from '../lib/prices';
 
 type Step = 'form' | 'review' | 'done';
 
@@ -65,14 +69,47 @@ export default function Send() {
   const [request, setRequest] = useState<TransferRequest | null>(null);
   const [quote, setQuote] = useState<FeeQuote | null>(null);
   const [result, setResult] = useState<SendResult | null>(null);
+  const [speed, setSpeed] = useState<BitcoinSpeed>('normal');
+  const [feeOptions, setFeeOptions] = useState<{ mode: string; options: BitcoinFeeOption[] } | null>(null);
+  const [prices, setPrices] = useState<NativePrices>({});
 
   const chain = getChain(mode, chainId);
   const assets = listAssets(mode, chainId);
   const asset = findAsset(mode, chainId, assetId) ?? assets[0];
-  const ownAddress = addressFor(keys, chainId);
+  const ownAddress = addressFor(keys, chainId, mode);
   const balancesKey = `${mode}:${chainId}`;
   const balances = loaded?.key === balancesKey ? loaded.data : null;
   const balance = balances?.assets.find((a) => a.asset.id === asset.id)?.balance;
+  const isBitcoin = chain.kind === 'bitcoin';
+  // Bitcoin amounts are typed in dollars (converted at today's price) when a price is known.
+  const btcPrice = isBitcoin ? prices.bitcoin : undefined;
+  const dollarEntry = !!asset.contract || btcPrice != null;
+  const fees = isBitcoin && feeOptions?.mode === mode ? feeOptions.options : null;
+
+  useEffect(() => {
+    fetchNativePrices().then(setPrices);
+  }, []);
+
+  useEffect(() => {
+    if (!isBitcoin) return;
+    let current = true;
+    bitcoinFeeOptions(mode).then(
+      (options) => current && setFeeOptions({ mode, options }),
+      () => {},
+    );
+    return () => {
+      current = false;
+    };
+  }, [isBitcoin, mode]);
+
+  /** The amount in the coin's own units, from what was typed. */
+  const typedAmount = (): bigint => {
+    if (btcPrice == null) return parseAmount(amountText, asset.decimals);
+    const micros = parseAmount(amountText, 6); // dollars, to the millionth
+    return (micros * 10n ** BigInt(asset.decimals)) / btcPrice;
+  };
+  const satsToDollars = (sats: bigint) =>
+    btcPrice != null ? `$${formatAmount((sats * btcPrice) / 10n ** BigInt(asset.decimals), 6, 2, 2)}` : null;
 
   useEffect(() => {
     let current = true;
@@ -90,7 +127,7 @@ export default function Send() {
     setError(null);
   };
 
-  const recipientError = touched || to ? validateRecipient(chainId, to, ownAddress) : null;
+  const recipientError = touched || to ? validateRecipient(chainId, to, ownAddress, mode) : null;
 
   const pasteAddress = async () => {
     setTo((await Clipboard.getStringAsync()).trim());
@@ -99,10 +136,11 @@ export default function Send() {
   const review = async () => {
     setTouched(true);
     setError(null);
-    if (validateRecipient(chainId, to, ownAddress)) return;
+    if (validateRecipient(chainId, to, ownAddress, mode)) return;
     let amount: bigint;
     try {
-      amount = parseAmount(amountText, asset.decimals);
+      amount = typedAmount();
+      if (amount <= 0n) throw new Error('Enter an amount');
     } catch (e) {
       setError(errorMessage(e));
       return;
@@ -111,7 +149,7 @@ export default function Send() {
       setError(`You only have ${formatAmount(balance, asset.decimals)} ${asset.symbol}`);
       return;
     }
-    const req = { asset, to: to.trim(), amount };
+    const req: TransferRequest = { asset, to: to.trim(), amount, ...(isBitcoin ? { speed } : {}) };
     setBusy(true);
     try {
       setQuote(await quoteTransfer(mode, keys, req));
@@ -127,7 +165,7 @@ export default function Send() {
   const confirm = async () => {
     if (!request || !quote) return;
     setError(null);
-    if (!(await authenticate(`Send ${amountText} ${asset.symbol}`))) return;
+    if (!(await authenticate(`Send ${formatAmount(request.amount, asset.decimals, 8)} ${asset.symbol}`))) return;
     setBusy(true);
     try {
       const sent = await sendTransfer(mode, keys, request, quote);
@@ -187,7 +225,12 @@ export default function Send() {
       <Screen>
         {mode === 'mainnet' ? <Banner tone="danger">Real funds. This cannot be undone.</Banner> : null}
         <Card>
-          <Row label="Send" value={`${formatAmount(request.amount, asset.decimals, asset.decimals)} ${asset.symbol}`} />
+          <Row
+            label="Send"
+            value={`${formatAmount(request.amount, asset.decimals, asset.decimals)} ${asset.symbol}${
+              isBitcoin && satsToDollars(request.amount) ? ` (≈ ${satsToDollars(request.amount)})` : ''
+            }`}
+          />
           <Row label="Network" value={`${chain.name} (${asset.contract ? chain.standard : 'native'})`} />
           <Row label="To" value={request.to} mono />
           <Row
@@ -249,7 +292,9 @@ export default function Send() {
         value={to}
         onChangeText={setTo}
         onBlur={() => setTouched(true)}
-        placeholder={chain.kind === 'solana' ? 'Solana address' : 'Address (0x…)'}
+        placeholder={
+          chain.kind === 'solana' ? 'Solana address' : isBitcoin ? `Bitcoin address (${mode === 'mainnet' ? 'bc1' : 'tb1'}…)` : 'Address (0x…)'
+        }
         error={recipientError}
         right={<LinkButton title="Paste" onPress={pasteAddress} />}
       />
@@ -258,21 +303,29 @@ export default function Send() {
       <View style={st.amountCard}>
         <TextInput
           // Stablecoins show as dollars: the "$" is part of the text, stripped again on input.
-          value={asset.contract && amountText ? `$${amountText}` : amountText}
+          value={dollarEntry && amountText ? `$${amountText}` : amountText}
           onChangeText={(t) => {
             setAmountText(t.replace(/[^0-9.,]/g, ''));
             setError(null);
           }}
           keyboardType="decimal-pad"
-          placeholder={asset.contract ? '$0.00' : `0 ${asset.symbol}`}
+          placeholder={dollarEntry ? '$0.00' : `0 ${asset.symbol}`}
           placeholderTextColor={colors.border}
           style={st.amountInput}
           accessibilityLabel={`Amount in ${asset.symbol}`}
         />
         <Text style={st.have}>
-          {balance != null
-            ? `You have ${asset.contract ? '$' : ''}${formatAmount(balance, asset.decimals, asset.contract ? 2 : 6, asset.contract ? 2 : 0)} ${asset.symbol}`
-            : balances?.error ?? '…'}
+          {btcPrice != null
+            ? `${(() => {
+                try {
+                  return amountText ? `≈ ${formatAmount(typedAmount(), asset.decimals, 8)} ${asset.symbol} · ` : '';
+                } catch {
+                  return '';
+                }
+              })()}You have ${balance != null ? satsToDollars(balance) : '…'}`
+            : balance != null
+              ? `You have ${asset.contract ? '$' : ''}${formatAmount(balance, asset.decimals, asset.contract ? 2 : 6, asset.contract ? 2 : 0)} ${asset.symbol}`
+              : balances?.error ?? '…'}
         </Text>
       </View>
       {/* Max only for tokens: for the native coin the fee has to come out of it too. */}
@@ -299,13 +352,46 @@ export default function Send() {
           Sending {asset.symbol} on {chain.name} needs a little {chain.nativeSymbol} in this wallet for the network fee.
         </Body>
       ) : null}
+      {isBitcoin ? (
+        <>
+          <Text style={st.label}>Speed</Text>
+          <View style={st.speeds}>
+            {(['slow', 'normal', 'fast'] as const).map((sp) => {
+              const option = fees?.find((f) => f.speed === sp);
+              const on = speed === sp;
+              return (
+                <Pressable
+                  key={sp}
+                  onPress={() => setSpeed(sp)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                  style={[st.speed, on && st.speedOn]}
+                >
+                  <Text style={st.speedTitle}>{SPEEDS[sp].title}</Text>
+                  <Text style={st.speedSub}>{SPEEDS[sp].time}</Text>
+                  <Text style={st.speedSub}>
+                    {option ? (satsToDollars(option.typicalFee) ?? `${option.rate} sat/vB`) : '…'}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Body muted>Bitcoin fees don’t depend on the amount, so tiny sends cost a lot.</Body>
+        </>
+      ) : null}
       {error ? <Banner tone="danger">{error}</Banner> : null}
       <Button title="Review" onPress={review} loading={busy} disabled={!to || !amountText} />
     </Screen>
   );
 }
 
-const SHORT_NAMES: Record<ChainId, string> = { ethereum: 'Ethereum', bsc: 'BNB Chain', solana: 'Solana' };
+const SPEEDS: Record<BitcoinSpeed, { title: string; time: string }> = {
+  slow: { title: 'Slow', time: '~1 day' },
+  normal: { title: 'Normal', time: '~1 hour' },
+  fast: { title: 'Fast', time: '~10 min' },
+};
+
+const SHORT_NAMES: Record<ChainId, string> = { bitcoin: 'Bitcoin', ethereum: 'Ethereum', bsc: 'BNB Chain', solana: 'Solana' };
 
 const st = StyleSheet.create({
   label: { fontSize: 15, fontWeight: '600', marginBottom: -6 },
@@ -330,4 +416,17 @@ const st = StyleSheet.create({
   quick: { flexDirection: 'row', gap: 8, justifyContent: 'center' },
   quickButton: { backgroundColor: colors.skyLight, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 8 },
   quickText: { fontSize: 15, fontWeight: '600', color: colors.skyDark },
+  speeds: { flexDirection: 'row', gap: 8 },
+  speed: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderWidth: 2,
+    borderColor: colors.border,
+    borderRadius: 16,
+    paddingVertical: 8,
+  },
+  speedOn: { borderColor: colors.text, borderBottomWidth: 5 },
+  speedTitle: { fontSize: 15, fontWeight: '700' },
+  speedSub: { fontSize: 12, color: colors.muted },
 });
