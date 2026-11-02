@@ -82,16 +82,24 @@ jobs:
             echo "::error::Add the PEARL_KEYSTORE_BASE64 and PEARL_KEYSTORE_PASSWORD repository secrets to sign the app."
             exit 1
           fi
-          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/pearl-release.p12"
-          echo "PEARL_KEYSTORE_FILE=$RUNNER_TEMP/pearl-release.p12" >> "$GITHUB_ENV"
+          # Pasted secrets often carry a stray space or line break: ignore whitespace.
+          PW=$(printf '%s' "$KEYSTORE_PASSWORD" | tr -d '[:space:]')
+          echo "::add-mask::$PW"
+          printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/pearl-release.p12" || {
+            echo "::error::PEARL_KEYSTORE_BASE64 isn't valid: paste the whole of keystore-base64.txt again."; exit 1; }
+          # Check the password now rather than after a 20-minute build.
+          keytool -list -keystore "$RUNNER_TEMP/pearl-release.p12" -storetype PKCS12 -storepass "$PW" -alias pearl > /dev/null || {
+            echo "::error::PEARL_KEYSTORE_PASSWORD doesn't open the key: paste password.txt again (or the key text is incomplete)."; exit 1; }
+          {
+            echo "PEARL_KEYSTORE_FILE=$RUNNER_TEMP/pearl-release.p12"
+            echo "PEARL_KEYSTORE_PASSWORD=$PW"
+            echo "PEARL_KEY_PASSWORD=$PW"
+            echo "PEARL_KEY_ALIAS=pearl"
+          } >> "$GITHUB_ENV"
 
       # x86_64 is included so the emulator smoke test can run the same APK.
       - name: Build APK
         working-directory: stablecoin-wallet/android
-        env:
-          PEARL_KEYSTORE_PASSWORD: ${{ secrets.PEARL_KEYSTORE_PASSWORD }}
-          PEARL_KEY_PASSWORD: ${{ secrets.PEARL_KEYSTORE_PASSWORD }}
-          PEARL_KEY_ALIAS: pearl
         run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a,x86_64 --no-daemon
 
       - name: Check the APK is signed with Pearl Wallet's key
