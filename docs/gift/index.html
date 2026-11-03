@@ -105,7 +105,7 @@
   var nets = [
     { id: 'sol', ok: okSol, address: sol, coin: 'USDC', network: 'Solana', fee: 'Fee under 1¢', tag: ['best', 'Best'], color: '#2775CA', mark: '$' },
     { id: 'bsc', ok: okEvm, address: evm, coin: 'USDT', network: 'BNB Smart Chain (BEP-20)', fee: 'Fee about 5¢', color: '#26A17B', mark: '₮' },
-    { id: 'eth', ok: okEvm, address: evm, coin: 'USDC', network: 'Ethereum (ERC-20)', fee: 'Fee can be $1 or more', tag: ['pricey', 'Pricey'], color: '#2775CA', mark: '$' },
+    { id: 'eth', ok: okEvm, address: evm, coin: 'USDT', network: 'Ethereum (ERC-20)', fee: 'Fee can be $1 or more', tag: ['pricey', 'Pricey'], color: '#26A17B', mark: '₮' },
   ].filter(function (n) { return n.ok; });
 
   var list = document.getElementById('nets');

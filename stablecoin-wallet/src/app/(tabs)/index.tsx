@@ -51,7 +51,7 @@ function greeting(items: ActivityItem[], total: bigint | null): string {
 
 /**
  * Dollar value of one coin, scaled to 18 decimals so coins can be added up. Stablecoins
- * count as $1; fee coins (ETH, BNB, TRX, SOL) use the current price, or null without one.
+ * count as $1; fee coins (BTC, ETH, BNB, CORE, SOL) use the current price, or null without one.
  */
 function coinValue(row: ChainBalances, asset: ChainBalances['assets'][number]['asset'], balance: bigint, prices: NativePrices): bigint | null {
   if (asset.contract) return balance * 10n ** BigInt(18 - asset.decimals);
@@ -345,7 +345,7 @@ export default function Home() {
         </Banner>
       ))}
       {coins.some((c) => c.value == null && c.balance > 0n) ? (
-        <Text style={s.fee}>Couldn’t get today’s prices, so ETH, BNB, TRX and SOL aren’t in your total yet.</Text>
+        <Text style={s.fee}>Couldn’t get today’s prices, so BTC, ETH, BNB, CORE and SOL aren’t in your total yet.</Text>
       ) : null}
     </Screen>
   );

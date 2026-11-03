@@ -403,7 +403,7 @@ const SPEEDS: Record<BitcoinSpeed, { title: string; time: string }> = {
   fast: { title: 'Fast', time: '~10 min' },
 };
 
-const SHORT_NAMES: Record<ChainId, string> = { bitcoin: 'Bitcoin', ethereum: 'Ethereum', bsc: 'BNB Chain', solana: 'Solana' };
+const SHORT_NAMES: Record<ChainId, string> = { bitcoin: 'Bitcoin', ethereum: 'Ethereum', bsc: 'BNB Chain', core: 'Core', solana: 'Solana' };
 
 const st = StyleSheet.create({
   label: { fontSize: 15, fontWeight: '600', marginBottom: -6 },

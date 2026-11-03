@@ -68,6 +68,13 @@ jobs:
           BITCOIN_LIVE: '1'
         run: npx jest __tests__/bitcoin.live.test.ts
 
+      # And Core: chain ids, fees and the CoinGecko price id.
+      - name: Core network check
+        continue-on-error: true
+        env:
+          CORE_LIVE: '1'
+        run: npx jest __tests__/core.live.test.ts
+
       - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install
 

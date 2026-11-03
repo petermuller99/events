@@ -11,23 +11,23 @@ import { describeOutcome } from '../src/lib/notify-text';
 import { fromSolanaTx } from '../src/lib/activity';
 import { defaultPrefs } from '../src/lib/prefs';
 
-const sepolia = getChain('testnet', 'ethereum');
+const bscTest = getChain('testnet', 'bsc');
 const ME_EVM = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
 const OTHER_EVM = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8';
-const SEPOLIA_USDC = sepolia.tokens[0].address;
+const TEST_USDT = bscTest.tokens[0].address;
 
 describe('EVM log parsing', () => {
   it('maps Transfer logs case-insensitively to the configured token', () => {
-    const [item] = fromTransferLogs(sepolia, ME_EVM, [
-      { token: SEPOLIA_USDC.toLowerCase(), from: OTHER_EVM.toLowerCase(), to: ME_EVM.toLowerCase(), value: 7n, hash: '0xAB', timestamp: 9 },
+    const [item] = fromTransferLogs(bscTest, ME_EVM, [
+      { token: TEST_USDT.toLowerCase(), from: OTHER_EVM.toLowerCase(), to: ME_EVM.toLowerCase(), value: 7n, hash: '0xAB', timestamp: 9 },
     ]);
-    expect(item).toMatchObject({ direction: 'in', symbol: 'USDC', amount: '7', counterparty: OTHER_EVM, status: 'confirmed' });
+    expect(item).toMatchObject({ direction: 'in', symbol: 'USDT', amount: '7', counterparty: OTHER_EVM, status: 'confirmed' });
   });
 
   it('drops zero-amount transfers (address poisoning)', () => {
-    const items = fromTransferLogs(sepolia, ME_EVM, [
-      { token: SEPOLIA_USDC, from: ME_EVM, to: OTHER_EVM, value: 0n, hash: '0x01', timestamp: 9 },
-      { token: SEPOLIA_USDC, from: OTHER_EVM, to: ME_EVM, value: 0n, hash: '0x02', timestamp: 9 },
+    const items = fromTransferLogs(bscTest, ME_EVM, [
+      { token: TEST_USDT, from: ME_EVM, to: OTHER_EVM, value: 0n, hash: '0x01', timestamp: 9 },
+      { token: TEST_USDT, from: OTHER_EVM, to: ME_EVM, value: 0n, hash: '0x02', timestamp: 9 },
     ]);
     expect(items).toEqual([]);
   });
@@ -35,10 +35,10 @@ describe('EVM log parsing', () => {
 
 describe('mergeItems', () => {
   it('turns a pending own send into confirmed when the chain reports it, and never back', () => {
-    const pending = pendingSend('ethereum', { id: 'USDC', symbol: 'USDC', decimals: 6 }, OTHER_EVM, 5n, '0xAB');
+    const pending = pendingSend('bsc', { id: 'USDT', symbol: 'USDT', decimals: 18 }, OTHER_EVM, 5n, '0xAB');
     let { state } = mergeItems(emptyState(), [pending]);
-    const [fromChain] = fromTransferLogs(sepolia, ME_EVM, [
-      { token: SEPOLIA_USDC, from: ME_EVM, to: OTHER_EVM, value: 5n, hash: '0xab', timestamp: 10 },
+    const [fromChain] = fromTransferLogs(bscTest, ME_EVM, [
+      { token: TEST_USDT, from: ME_EVM, to: OTHER_EVM, value: 5n, hash: '0xab', timestamp: 10 },
     ]);
     expect(fromChain.id).toBe(pending.id);
     const res = mergeItems(state, [fromChain]);

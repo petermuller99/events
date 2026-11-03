@@ -73,13 +73,15 @@ export default function Receive() {
       <Banner tone="warning">
         {chain.kind === 'bitcoin'
           ? `Only send ${chain.nativeSymbol} on the ${chain.name} network to this address. Payments take about 10–60 minutes to arrive.`
-          : `Only send ${tokens} (${chain.standard}) or ${chain.nativeSymbol} on ${chain.name} to this address. Tokens sent from another network may be lost.`}
+          : tokens
+            ? `Only send ${tokens} (${chain.standard}) or ${chain.nativeSymbol} on ${chain.name} to this address. Tokens sent from another network may be lost.`
+            : `Only send ${chain.nativeSymbol} on ${chain.name} to this address. Pearl Wallet doesn’t show other tokens on ${chain.name}.`}
       </Banner>
       {chain.kind === 'bitcoin' ? (
         <Body muted>The same 12 words open this address in BlueWallet or Trust Wallet.</Body>
       ) : null}
       {chain.kind === 'evm' ? (
-        <Body muted>This same address also receives on the other EVM network (Ethereum and BSC).</Body>
+        <Body muted>This same address is also Pearl’s address on Ethereum, BNB Chain and Core.</Body>
       ) : null}
       {mode === 'mainnet' ? (
         <View style={st.gift}>
@@ -105,7 +107,7 @@ export default function Receive() {
       ) : null}
       {chain.faucetUrl ? (
         <Button
-          title={`Get free test ${chain.nativeSymbol} / tokens`}
+          title={`Get free test ${chain.nativeSymbol}${chain.tokens.length ? ' / tokens' : ''}`}
           variant="secondary"
           onPress={() => Linking.openURL(chain.faucetUrl!)}
         />

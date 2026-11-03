@@ -21,6 +21,14 @@ describe('token config', () => {
     expect(listAssets('mainnet', 'bsc').map((a) => a.symbol)).toEqual(['USDT', 'BNB']);
     expect(listAssets('mainnet', 'bitcoin').map((a) => a.symbol)).toEqual(['BTC']);
     expect(listAssets('mainnet', 'solana').map((a) => a.symbol)).toEqual(['USDC', 'USDT', 'SOL']);
+    expect(listAssets('mainnet', 'ethereum').map((a) => a.symbol)).toEqual(['USDT', 'ETH']);
+    expect(listAssets('mainnet', 'core').map((a) => a.symbol)).toEqual(['CORE']);
+    expect(listAssets('testnet', 'core').map((a) => a.symbol)).toEqual(['tCORE2']);
+  });
+
+  it('configures Core as an EVM network with its own chain ids', () => {
+    expect(CHAINS.mainnet.core).toMatchObject({ kind: 'evm', chainId: 1116, nativeDecimals: 18 });
+    expect(CHAINS.testnet.core).toMatchObject({ kind: 'evm', chainId: 1114 });
   });
 });
 
@@ -31,6 +39,7 @@ describe('validateRecipient', () => {
   it('accepts valid addresses for each chain', () => {
     expect(validateRecipient('ethereum', evmAddr)).toBeNull();
     expect(validateRecipient('bsc', evmAddr.toLowerCase())).toBeNull();
+    expect(validateRecipient('core', evmAddr)).toBeNull();
   });
 
   it('blocks sending to the wrong network', () => {

@@ -134,7 +134,9 @@ async function syncEvm(chain: ChainConfig, owner: string, state: ActivityState):
   const tokens = chain.tokens.map((t) => t.address);
   const raw: { token: string; from: string; to: string; value: bigint; hash: string; block: number }[] = [];
   let cursor = prevCursor ?? from - 1;
-  for (let start = from; start <= latest; start += LOG_CHUNK) {
+  // No tokens to watch (Core, Sepolia): an empty address list would match every contract's logs.
+  if (!tokens.length) cursor = Math.max(cursor, latest);
+  for (let start = from; tokens.length && start <= latest; start += LOG_CHUNK) {
     const end = Math.min(latest, start + LOG_CHUNK - 1);
     const range = { address: tokens, fromBlock: start, toBlock: end };
     const [incoming, outgoing] = await Promise.all([

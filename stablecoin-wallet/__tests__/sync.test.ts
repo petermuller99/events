@@ -3,7 +3,7 @@ import { pendingSend } from '../src/lib/activity';
 import { getChain } from '../src/lib/config';
 import { recordSend, syncActivity } from '../src/lib/sync';
 
-// A fake chain per network: Ethereum Sepolia has one token (USDC); BSC stays empty;
+// A fake chain per network: BSC Testnet has one token (USDT); the others stay empty;
 // Solana's node is unreachable (fetch fails), which sync must shrug off.
 
 jest.mock('../src/lib/evm', () => ({ getProvider: jest.fn() }));
@@ -13,7 +13,7 @@ const evm = require('../src/lib/evm') as { getProvider: jest.Mock };
 const ME_EVM = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
 const OTHER_EVM = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8';
 const T = keccakId('Transfer(address,address,uint256)');
-const sepolia = getChain('testnet', 'ethereum');
+const bscTest = getChain('testnet', 'bsc');
 
 const chainState = {
   latest: 10_000,
@@ -23,7 +23,7 @@ const chainState = {
 };
 const getLogsCalls: { fromBlock: number; toBlock: number }[] = [];
 
-function sepoliaProvider() {
+function bscProvider() {
   return {
     send: async (method: string) => (method === 'eth_blockNumber' ? toBeHex(chainState.latest) : null),
     getBalance: async () => chainState.balance,
@@ -38,7 +38,7 @@ function sepoliaProvider() {
         .filter((l) => (wantTo ? zeroPadValue(l.to, 32) === wantTo : true))
         .filter((l) => (wantFrom ? zeroPadValue(l.from, 32) === wantFrom : true))
         .map((l) => ({
-          address: sepolia.tokens[0].address,
+          address: bscTest.tokens[0].address,
           topics: [T, zeroPadValue(l.from, 32).toLowerCase(), zeroPadValue(l.to, 32).toLowerCase()],
           data: toBeHex(l.value, 32),
           transactionHash: l.hash,
@@ -56,7 +56,7 @@ const emptyProvider = {
 };
 
 beforeEach(() => {
-  evm.getProvider.mockImplementation((c: { id: string }) => (c.id === 'ethereum' ? sepoliaProvider() : emptyProvider));
+  evm.getProvider.mockImplementation((c: { id: string }) => (c.id === 'bsc' ? bscProvider() : emptyProvider));
   global.fetch = jest.fn(async () => ({ ok: false, status: 503, json: async () => ({}) })) as unknown as typeof fetch;
 });
 
@@ -71,9 +71,9 @@ it('treats the first sync as a baseline, then reports new money and settled send
   expect(getLogsCalls[0].fromBlock).toBe(8_000); // latest - initial lookback
 
   // A send made in Pearl, still pending.
-  await recordSend('testnet', pendingSend('ethereum', { id: 'USDC', symbol: 'USDC', decimals: 6 }, OTHER_EVM, 5_000_000n, '0xmysend'));
+  await recordSend('testnet', pendingSend('bsc', { id: 'USDT', symbol: 'USDT', decimals: 18 }, OTHER_EVM, 5_000_000n, '0xmysend'));
 
-  // Then: new USDC and ETH on Sepolia, and the send gets confirmed.
+  // Then: new USDT and tBNB on BSC Testnet, and the send gets confirmed.
   chainState.receipts['0xmysend'] = { status: 1 };
   chainState.latest = 10_100;
   chainState.logs.push({ block: 10_050, from: OTHER_EVM, to: ME_EVM, value: 2_000_000n, hash: '0xnew' });
@@ -83,8 +83,8 @@ it('treats the first sync as a baseline, then reports new money and settled send
   const second = await syncActivity('testnet', addresses);
   expect(getLogsCalls[0]).toEqual({ fromBlock: 10_001, toBlock: 10_100 });
   expect(second.received.map((i) => `${i.chain}:${i.symbol}:${i.amount}`).sort()).toEqual([
-    'ethereum:ETH:50000000000000000',
-    'ethereum:USDC:2000000',
+    'bsc:USDT:2000000',
+    'bsc:tBNB:50000000000000000',
   ]);
   expect(second.settled.map((i) => [i.hash, i.status])).toEqual([['0xmysend', 'confirmed']]);
 
@@ -98,7 +98,7 @@ it('keeps going when one network is unreachable', async () => {
   chainState.latest = 10_200;
   chainState.logs = [{ block: 10_150, from: OTHER_EVM, to: ME_EVM, value: 1n, hash: '0xx1' }];
   evm.getProvider.mockImplementation((c: { id: string }) =>
-    c.id === 'ethereum' ? sepoliaProvider() : { ...emptyProvider, send: async () => { throw new Error('down'); } },
+    c.id === 'bsc' ? bscProvider() : { ...emptyProvider, send: async () => { throw new Error('down'); } },
   );
   const res = await syncActivity('testnet', addresses);
   expect(res.items.map((i) => i.hash)).toContain('0xx1');

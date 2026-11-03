@@ -82,10 +82,27 @@ function Bitcoin({ size }: { size: number }) {
   );
 }
 
+/** Core: a simple white "C" on Core's orange (not the official artwork). */
+function Core({ size }: { size: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 32 32">
+      <Circle cx={16} cy={16} r={16} fill="#FF9211" />
+      <Path
+        fill="none"
+        stroke="#FFF"
+        strokeWidth={3.6}
+        strokeLinecap="round"
+        d="M21.6 10.6A7.8 7.8 0 1 0 21.6 21.4"
+      />
+    </Svg>
+  );
+}
+
 const CHAIN_LOGOS: Record<ChainId, (p: { size: number }) => JSX.Element> = {
   bitcoin: Bitcoin,
   ethereum: Ethereum,
   bsc: Bnb,
+  core: Core,
   solana: Solana,
 };
 

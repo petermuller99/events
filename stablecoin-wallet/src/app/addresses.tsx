@@ -43,11 +43,11 @@ export default function Addresses() {
         })}
       </ListCard>
       <Text style={s.note}>
-        Ethereum and BNB Chain share one address. The same secret words restore these in MetaMask, Trust Wallet,
+        Ethereum, BNB Chain and Core share one address. The same secret words restore these in MetaMask, Trust Wallet,
         Phantom and BlueWallet.
       </Text>
       <Text style={s.note}>
-        Paths: {BITCOIN_PATH} (Bitcoin) · {EVM_PATH} (Ethereum, BNB Chain) · {SOLANA_PATH} (Solana)
+        Paths: {BITCOIN_PATH} (Bitcoin) · {EVM_PATH} (Ethereum, BNB Chain, Core) · {SOLANA_PATH} (Solana)
       </Text>
     </Screen>
   );

@@ -25,6 +25,7 @@ const LINE_COLORS: Record<string, string> = {
   bitcoin: '#F7931A',
   ethereum: '#627EEA',
   bsc: '#E0A800',
+  core: '#F08000',
   solana: '#14B87A',
 };
 
@@ -135,6 +136,14 @@ export default function Coin() {
         <View style={[s.note, { backgroundColor: '#FFF0C2' }]}>
           <Text style={s.noteText}>
             🐝 Bitcoin’s price goes up and down, sometimes a lot. Great for saving over years, not for spending today.
+          </Text>
+        </View>
+      ) : null}
+      {chainId === 'core' ? (
+        <View style={[s.note, { backgroundColor: '#FFE6C7' }]}>
+          <Text style={s.noteText}>
+            🐝 CORE’s price can go up and down a lot. Core uses the same address as Ethereum and BNB Chain, so check
+            the network before anyone sends.
           </Text>
         </View>
       ) : null}

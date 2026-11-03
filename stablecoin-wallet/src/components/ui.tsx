@@ -58,6 +58,7 @@ export const fonts = {
 export const chainColors: Record<string, string> = {
   ethereum: '#627EEA',
   bsc: '#E0A800',
+  core: '#FF9211',
 };
 
 const stickers = {
@@ -448,7 +449,7 @@ export const styles = StyleSheet.create({
   tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   tile: {
     flexGrow: 1,
-    flexBasis: '45%',
+    flexBasis: '30%',
     minHeight: 54,
     borderRadius: 18,
     alignItems: 'center',
