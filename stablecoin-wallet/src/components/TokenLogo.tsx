@@ -4,7 +4,8 @@ import Svg, { Circle, G, Path } from 'react-native-svg';
 import type { ChainId } from '../lib/config';
 
 // Official USDT (Tether) and USDC (Circle) marks and network logos, from the CC0
-// cryptocurrency-icons set, using each issuer's brand colour.
+// cryptocurrency-icons set, using each issuer's brand colour. Core's mark is from
+// Ledger's @ledgerhq/crypto-icons-ui (MIT, Copyright (c) Ledger).
 
 function Usdt({ size }: { size: number }) {
   return (
@@ -82,18 +83,16 @@ function Bitcoin({ size }: { size: number }) {
   );
 }
 
-/** Core: a simple white "C" on Core's orange (not the official artwork). */
+/** Core's hexagon mark, from Ledger's crypto-icons (MIT), in Core's orange on black. */
 function Core({ size }: { size: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 32 32">
-      <Circle cx={16} cy={16} r={16} fill="#FF9211" />
-      <Path
-        fill="none"
-        stroke="#FFF"
-        strokeWidth={3.6}
-        strokeLinecap="round"
-        d="M21.6 10.6A7.8 7.8 0 1 0 21.6 21.4"
-      />
+      <Circle cx={16} cy={16} r={16} fill="#16130F" />
+      <G fill="#FD8F17" transform="translate(2.4 2.4) scale(1.133)">
+        <Path d="M12 3.031l.27.059.69.39.72.418 1.558.903.723.418.84.48.719.422 1.558.899.453.27.207.179.063.12v8.7l-.121.18-.18.152-.84.48-.781.45-.719.418-1.558.902-.723.418-.84.48-.777.45-.723.422-.36.18-.148.03-.27-.09-.75-.421-.66-.39-3.12-1.802-.72-.418-1.562-.902-.48-.297-.149-.18-.03-.062v-8.7l.089-.148.27-.21.48-.27.512-.3 3.12-1.802.72-.418 1.558-.902.633-.36.238-.12zm-.031 1.89l-.809.477-.691.391-.719.422-.781.45-.84.48-.57.328-.778.453-.722.418-.118.09v6.992l.149.148.601.328.508.301.781.45.84.48.508.3 2.344 1.352.328.207.121-.027.777-.45.723-.421.84-.48.719-.419.84-.48.718-.422.782-.45.539-.3.09-.09V8.43l-.239-.148-.719-.422-1.562-.898-.719-.422-2.34-1.348-.39-.242zm0 0" />
+        <Path d="M16.559 9.93h.09v5.101l-.81.48-.839.477-.719.422-.781.45-.719.421h-.09V12l.66-.36.84-.449.688-.363.422-.238.48-.238zm0 0" />
+        <Path d="M12 6.602l.3.09.72.417.69.391.72.422.78.45.84.48.598.359-.027.117-.633.363-.148-.03-2.34-1.352-.719-.418-.691-.391-.149.031-.75.418-.511.301-.782.45-.84.48-.718.422-.149.09-.03 4.527.179.062 1.558.899.84.48 1.23.719.09.152-.027.75-.152-.031-.508-.3-3.121-1.802-.66-.386-.149-.121-.062-.211V9.39l.09-.152.242-.18.719-.417 1.558-.903.723-.418.777-.449.422-.242zm0 0" />
+      </G>
     </Svg>
   );
 }
