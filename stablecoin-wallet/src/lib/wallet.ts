@@ -3,9 +3,12 @@ import {
   CHAIN_IDS,
   getChain,
   type ChainConfig,
+  tokenAssetId,
+  type AssetId,
   type ChainId,
+  type FoundMeta,
   type NetworkMode,
-  type TokenSymbol,
+  type TokenConfig,
 } from './config';
 import {
   bitcoinAddress,
@@ -18,6 +21,7 @@ import {
   type BitcoinSpeed,
 } from './bitcoin';
 import * as evm from './evm';
+import { foundTokens } from './found';
 import type { WalletKeys } from './keys';
 import {
   associatedTokenAddress,
@@ -38,7 +42,7 @@ import { isValidTronAddress } from './tron-address';
 // Chain-agnostic API used by the screens. Everything below dispatches to the
 // EVM implementation (Ethereum, BSC), the Solana one or the Bitcoin one.
 
-export type AssetId = 'native' | TokenSymbol;
+export type { AssetId } from './config';
 
 export interface Asset {
   chain: ChainId;
@@ -47,6 +51,13 @@ export interface Asset {
   decimals: number;
   /** Token contract; undefined for the native coin. */
   contract?: string;
+  /** Set for coins found in the wallet by themselves. */
+  found?: FoundMeta;
+}
+
+/** USDT and USDC: shown and typed in dollars. */
+export function isStable(asset: Pick<Asset, 'contract' | 'found'>): boolean {
+  return !!asset.contract && !asset.found;
 }
 
 export interface ChainBalances {
@@ -94,17 +105,23 @@ export async function bitcoinFeeOptions(mode: NetworkMode): Promise<BitcoinFeeOp
   }));
 }
 
+/** A network's tokens: the ones Pearl Wallet ships with, then any found coins. */
+export function tokensFor(mode: NetworkMode, chainId: ChainId): TokenConfig[] {
+  return [...getChain(mode, chainId).tokens, ...foundTokens(mode, chainId)];
+}
+
 export function listAssets(mode: NetworkMode, chainId: ChainId): Asset[] {
   const chain = getChain(mode, chainId);
   return [
-    ...chain.tokens.map((t) => ({
+    ...tokensFor(mode, chainId).map((t) => ({
       chain: chainId,
-      id: t.symbol as AssetId,
+      id: tokenAssetId(t),
       symbol: t.symbol,
       decimals: t.decimals,
       contract: t.address,
+      found: t.found,
     })),
-    { chain: chainId, id: 'native', symbol: chain.nativeSymbol, decimals: chain.nativeDecimals },
+    { chain: chainId, id: 'native' as const, symbol: chain.nativeSymbol, decimals: chain.nativeDecimals },
   ];
 }
 

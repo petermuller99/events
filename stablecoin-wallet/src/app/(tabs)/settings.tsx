@@ -147,6 +147,12 @@ export default function Settings() {
           right={<Toggle label="Test money" value={mode === 'testnet'} onChange={setTestMoney} />}
         />
         <ListRow title="Networks" subtitle="Bitcoin · Ethereum · BNB Chain · Core · Solana" />
+        <ListRow
+          title="Found coins"
+          subtitle="Other coins in the wallet, shown if they’re real and worth $0.10 or more"
+          right={chevron}
+          onPress={() => router.push('/found')}
+        />
         <ListRow title="Show my secret words" right={chevron} onPress={() => router.push('/phrase')} />
         <ListRow title="My addresses" right={chevron} onPress={() => router.push('/addresses')} />
         <ListRow last title="Lock now" right={chevron} onPress={lock} />

@@ -1,6 +1,6 @@
 import { getAddress } from 'ethers';
 import { netChange, type EsploraTx } from './bitcoin';
-import type { ChainConfig, ChainId, NetworkMode } from './config';
+import { tokenAssetId, type ChainConfig, type ChainId, type NetworkMode } from './config';
 import type { SolanaParsedTx, SolanaTokenBalance } from './solana';
 import type { AssetId } from './wallet';
 
@@ -108,9 +108,9 @@ export function fromTransferLogs(chain: ChainConfig, owner: string, logs: Transf
     if (!incoming && log.from.toLowerCase() !== owner.toLowerCase()) continue;
     const direction = incoming ? 'in' : 'out';
     out.push({
-      id: activityId(chain.id, log.hash, token.symbol, direction),
+      id: activityId(chain.id, log.hash, tokenAssetId(token), direction),
       chain: chain.id,
-      assetId: token.symbol,
+      assetId: tokenAssetId(token),
       symbol: token.symbol,
       decimals: token.decimals,
       direction,
@@ -177,8 +177,8 @@ export function fromSolanaTx(chain: ChainConfig, owner: string, signature: strin
       .sort((a, b) => (a[1] < b[1] ? -1 : 1) * (direction === 'in' ? 1 : -1))[0]?.[0];
     items.push({
       ...base,
-      id: activityId(chain.id, signature, token.symbol, direction),
-      assetId: token.symbol,
+      id: activityId(chain.id, signature, tokenAssetId(token), direction),
+      assetId: tokenAssetId(token),
       symbol: token.symbol,
       decimals: token.decimals,
       direction,

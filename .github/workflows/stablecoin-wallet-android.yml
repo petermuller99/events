@@ -75,6 +75,13 @@ jobs:
           CORE_LIVE: '1'
         run: npx jest __tests__/core.live.test.ts
 
+      # And the services found coins rely on: CoinGecko's lists and Multicall3.
+      - name: Found coins check
+        continue-on-error: true
+        env:
+          FOUND_LIVE: '1'
+        run: npx jest __tests__/found.live.test.ts
+
       - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install
 

@@ -4,10 +4,14 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { ChangeLabel, LineChart, RangeTabs } from '../components/Chart';
 import { ArrowDown, ArrowUp } from '../components/icons';
 import { ActivityRow, ListCard, TokenBadge } from '../components/money';
-import { colors, Screen, Text } from '../components/ui';
+import { colors, Row, Screen, shortAddress, Text } from '../components/ui';
 import { formatAmount, formatDollars } from '../lib/amount';
 import { CHAIN_IDS, getChain, type ChainId } from '../lib/config';
+import { foundCoin, setHiddenByYou } from '../lib/found';
 import {
+  coinValue18,
+  fetchCoinHistory,
+  fetchCoinPrices,
   fetchNativePrices,
   fetchPriceHistory,
   nativeValue,
@@ -15,7 +19,7 @@ import {
   type PricePoint,
   type Range,
 } from '../lib/prices';
-import { fetchChainBalances, findAsset, listAssets, type AssetId } from '../lib/wallet';
+import { fetchChainBalances, findAsset, isStable, listAssets, type AssetId } from '../lib/wallet';
 import { useActivity } from '../state/ActivityContext';
 import { useUnlockedWallet } from '../state/WalletContext';
 
@@ -37,62 +41,82 @@ export default function Coin() {
   const chainId = CHAIN_IDS.includes(params.chain as ChainId) ? (params.chain as ChainId) : 'ethereum';
   const chain = getChain(mode, chainId);
   const asset = findAsset(mode, chainId, params.asset as AssetId) ?? listAssets(mode, chainId)[0];
-  const stable = !!asset.contract;
+  const stable = isStable(asset);
+  const found = asset.found;
+  const foundInfo = found && asset.contract ? foundCoin(chainId, asset.contract) : undefined;
 
   const [balance, setBalance] = useState<bigint | null>(null);
   const [prices, setPrices] = useState<NativePrices>({});
+  const [foundPrice, setFoundPrice] = useState<{ usd: number } | null>(null);
   const [range, setRange] = useState<Range>('1W');
   const [history, setHistory] = useState<{ range: Range; points: PricePoint[] | 'error' } | null>(null);
 
   useEffect(() => {
     let current = true;
-    Promise.all([fetchChainBalances(mode, keys, chainId), fetchNativePrices()]).then(([b, p]) => {
+    const coinId = found?.coingeckoId;
+    Promise.all([
+      fetchChainBalances(mode, keys, chainId),
+      fetchNativePrices(),
+      coinId ? fetchCoinPrices([coinId]) : Promise.resolve(null),
+    ]).then(([b, p, fp]) => {
       if (!current) return;
       setBalance(b.assets.find((a) => a.asset.id === asset.id)?.balance ?? 0n);
       setPrices(p);
+      if (coinId) setFoundPrice(fp?.[coinId] ?? null);
     });
     return () => {
       current = false;
     };
-  }, [mode, keys, chainId, asset.id]);
+  }, [mode, keys, chainId, asset.id, found?.coingeckoId]);
 
   useEffect(() => {
     if (stable) return;
     let current = true;
-    fetchPriceHistory(chainId, range).then(
+    (found ? fetchCoinHistory(found.coingeckoId, range) : fetchPriceHistory(chainId, range)).then(
       (points) => current && setHistory({ range, points }),
       () => current && setHistory({ range, points: 'error' }),
     );
     return () => {
       current = false;
     };
-  }, [stable, chainId, range]);
+  }, [stable, chainId, range, found]);
 
   const price = prices[chainId];
   const value =
     balance == null
       ? null
-      : stable
-        ? balance * 10n ** BigInt(18 - asset.decimals)
-        : price != null
-          ? nativeValue(balance, asset.decimals, price)
-          : null;
+      : found
+        ? foundPrice
+          ? coinValue18(balance, asset.decimals, foundPrice.usd)
+          : null
+        : stable
+          ? balance * 10n ** BigInt(18 - asset.decimals)
+          : price != null
+            ? nativeValue(balance, asset.decimals, price)
+            : null;
   const points = history?.range === range ? history.points : null;
   const loaded = Array.isArray(points) && points.length > 1 ? points : null;
   const held = balance != null ? Number(balance) / 10 ** asset.decimals : 0;
   const change = loaded ? held * (loaded[loaded.length - 1][1] - loaded[0][1]) : 0;
   const percent = loaded ? (loaded[loaded.length - 1][1] / loaded[0][1] - 1) * 100 : undefined;
-  const color = LINE_COLORS[stable ? asset.symbol : chainId] ?? colors.text;
+  const color = found ? '#8A5CF6' : (LINE_COLORS[stable ? asset.symbol : chainId] ?? colors.text);
+  const hide = async () => {
+    if (!asset.contract) return;
+    await setHiddenByYou(chainId, asset.contract, true);
+    router.back();
+  };
   const recent = activity.items.filter((i) => i.chain === chainId && i.assetId === asset.id).slice(0, 5);
 
   return (
     <Screen>
       <Stack.Screen options={{ title: '' }} />
       <View style={s.header}>
-        <TokenBadge symbol={asset.symbol} chain={chainId} native={!stable} size={44} />
-        <View>
+        <TokenBadge symbol={asset.symbol} chain={chainId} native={!asset.contract} found={!!found} size={44} />
+        <View style={{ flex: 1 }}>
           <Text style={s.symbol}>{asset.symbol}</Text>
-          <Text style={s.muted}>{chain.name}</Text>
+          <Text style={s.muted} numberOfLines={1}>
+            {found ? `${found.name} · ${chain.name}` : chain.name}
+          </Text>
         </View>
       </View>
 
@@ -147,6 +171,23 @@ export default function Coin() {
           </Text>
         </View>
       ) : null}
+      {found ? (
+        <>
+          <View style={[s.note, { backgroundColor: '#FFE6C7' }]}>
+            <Text style={s.noteText}>
+              🐝 Pearl Wallet found this coin in the wallet by itself. It’s not a stable dollar: its price can go up,
+              down, or to zero.
+            </Text>
+          </View>
+          <View style={s.info}>
+            <Row label="Contract" value={shortAddress(asset.contract ?? '')} mono />
+            <Row label="Listed on CoinGecko" value="✓ Yes" />
+            {foundInfo?.volume != null ? (
+              <Row label="Traded in the last day" value={`$${Math.round(foundInfo.volume).toLocaleString()}`} />
+            ) : null}
+          </View>
+        </>
+      ) : null}
       {stable ? (
         <View style={s.note}>
           <Text style={s.noteText}>
@@ -174,6 +215,16 @@ export default function Coin() {
           <Text style={s.actionText}>Receive</Text>
         </Pressable>
       </View>
+      {found && asset.contract ? (
+        <Pressable accessibilityRole="button" onPress={hide} style={({ pressed }) => [s.hide, pressed && { opacity: 0.7 }]}>
+          <Text style={s.actionText}>🙈 Hide this coin</Text>
+        </Pressable>
+      ) : null}
+      {found ? (
+        <Text style={s.muted}>
+          Sending is a plain transfer, like USDT. Pearl Wallet never gives a coin permission to spend your money.
+        </Text>
+      ) : null}
 
       {recent.length ? (
         <>
@@ -230,4 +281,14 @@ const s = StyleSheet.create({
   pressed: { transform: [{ translateY: 2 }], borderBottomWidth: 2 },
   actionText: { fontSize: 17, fontWeight: '700' },
   section: { fontSize: 18, fontWeight: '700' },
+  info: { backgroundColor: colors.card, borderRadius: 18, borderWidth: 2, borderColor: colors.border, padding: 12, gap: 6 },
+  hide: {
+    alignItems: 'center',
+    borderRadius: 22,
+    paddingVertical: 12,
+    backgroundColor: colors.card,
+    borderWidth: 2,
+    borderColor: colors.border,
+    borderBottomWidth: 4,
+  },
 });

@@ -333,6 +333,22 @@ export class SolanaClient {
       .reduce((sum, a) => sum + BigInt(a.account.data.parsed.info.tokenAmount.amount), 0n);
   }
 
+  /** Every classic SPL token account of `owner`, added up per mint. */
+  async getAllTokenBalances(owner: string): Promise<{ mint: string; balance: bigint; decimals: number }[]> {
+    const r = await this.call<{
+      value: {
+        account: { data: { parsed: { info: { mint: string; tokenAmount: { amount: string; decimals: number } } } } };
+      }[];
+    }>('getTokenAccountsByOwner', [owner, { programId: TOKEN_PROGRAM }, { encoding: 'jsonParsed', commitment: 'confirmed' }]);
+    const byMint = new Map<string, { mint: string; balance: bigint; decimals: number }>();
+    for (const a of r.value) {
+      const { mint, tokenAmount } = a.account.data.parsed.info;
+      const prev = byMint.get(mint);
+      byMint.set(mint, { mint, balance: (prev?.balance ?? 0n) + BigInt(tokenAmount.amount), decimals: tokenAmount.decimals });
+    }
+    return [...byMint.values()];
+  }
+
   /**
    * Reads decimals straight from the mint account, or null if the node won't return it
    * (the public mainnet node answers "not found" for the USDC mint, for both

@@ -1,12 +1,12 @@
 import type { ActivityItem } from './activity';
 import { formatAmount, formatDollars } from './amount';
-import { getChain, type NetworkMode } from './config';
+import { getChain, isStableAssetId, type NetworkMode } from './config';
 import type { Prefs } from './prefs';
 import type { SyncOutcome } from './sync';
 
 const short = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : 'them');
 const amountOf = (i: ActivityItem) =>
-  `${i.assetId === 'native' ? formatAmount(BigInt(i.amount), i.decimals, 4) : formatDollars(BigInt(i.amount), i.decimals)} ${i.symbol}`;
+  `${isStableAssetId(i.assetId) ? formatDollars(BigInt(i.amount), i.decimals) : formatAmount(BigInt(i.amount), i.decimals, 4)} ${i.symbol}`;
 
 export interface NotificationText {
   title: string;

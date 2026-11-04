@@ -14,6 +14,8 @@ export interface Holding {
   balance: bigint;
   /** Stablecoins count as $1. */
   stable: boolean;
+  /** Key into history/currentPrice; the chain for fee coins, the CoinGecko id for found coins. */
+  priceKey?: string;
 }
 
 export interface Point {
@@ -28,9 +30,9 @@ function units(amount: bigint, decimals: number): number {
 export function portfolioSeries(
   holdings: Holding[],
   items: ActivityItem[],
-  history: Partial<Record<ChainId, PricePoint[]>>,
-  /** Today's fee coin prices in dollars, for coins without history. */
-  currentPrice: Partial<Record<ChainId, number>>,
+  history: Partial<Record<string, PricePoint[]>>,
+  /** Today's prices in dollars, for coins without history. */
+  currentPrice: Partial<Record<string, number>>,
   from: number,
   to: number,
   samples = 48,
@@ -48,7 +50,8 @@ export function portfolioSeries(
         balance += i.direction === 'in' ? -BigInt(i.amount) : BigInt(i.amount);
       }
       if (balance <= 0n) continue;
-      const price = h.stable ? 1 : history[h.chain]?.length ? priceAt(history[h.chain]!, t) : (currentPrice[h.chain] ?? 0);
+      const key = h.priceKey ?? h.chain;
+      const price = h.stable ? 1 : history[key]?.length ? priceAt(history[key]!, t) : (currentPrice[key] ?? 0);
       usd += units(balance, h.decimals) * price;
     }
     out.push({ t, usd });

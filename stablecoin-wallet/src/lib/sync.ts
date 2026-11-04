@@ -16,7 +16,9 @@ import {
 import { CHAIN_IDS, getChain, type ChainConfig, type ChainId, type NetworkMode } from './config';
 import { BitcoinClient } from './bitcoin';
 import * as evm from './evm';
+import { loadFound } from './found';
 import { associatedTokenAddress, SolanaClient } from './solana';
+import { tokensFor } from './wallet';
 
 export interface WatchedAddresses {
   evm: string;
@@ -210,10 +212,12 @@ export function syncActivity(mode: NetworkMode, addresses: WatchedAddresses): Pr
 
 async function doSync(mode: NetworkMode, addresses: WatchedAddresses): Promise<SyncOutcome> {
   let state = await loadActivity(mode);
+  await loadFound();
   const wasInitialized = { ...state.initialized };
   const results = await Promise.all(
     CHAIN_IDS.map(async (id): Promise<[ChainId, ChainSync | null]> => {
-      const chain = getChain(mode, id);
+      // Found coins are watched like the coins Pearl Wallet ships with.
+      const chain = { ...getChain(mode, id), tokens: tokensFor(mode, id) };
       const owner = id === 'bitcoin' ? addresses.bitcoin : id === 'solana' ? addresses.solana : addresses.evm;
       if (!owner) return [id, null];
       try {

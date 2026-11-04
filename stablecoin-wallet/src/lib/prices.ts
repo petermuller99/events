@@ -111,12 +111,17 @@ export type PricePoint = [number, number];
 const historyCache = new Map<string, { at: number; points: PricePoint[] }>();
 
 /** Price history of a fee coin over a range, from CoinGecko (cached for 10 minutes). */
-export async function fetchPriceHistory(chain: ChainId, range: Range): Promise<PricePoint[]> {
-  const key = `${chain}:${range}`;
+export function fetchPriceHistory(chain: ChainId, range: Range): Promise<PricePoint[]> {
+  return fetchCoinHistory(COIN_IDS[chain], range);
+}
+
+/** Price history of any CoinGecko coin id. */
+export async function fetchCoinHistory(coinId: string, range: Range): Promise<PricePoint[]> {
+  const key = `${coinId}:${range}`;
   const hit = historyCache.get(key);
   if (hit && Date.now() - hit.at < 10 * 60_000) return hit.points;
   const res = await fetch(
-    `https://api.coingecko.com/api/v3/coins/${COIN_IDS[chain]}/market_chart?vs_currency=usd&days=${RANGES[range]}`,
+    `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(coinId)}/market_chart?vs_currency=usd&days=${RANGES[range]}`,
   );
   if (!res.ok) throw new Error(`Price service returned ${res.status}`);
   const points = parsePriceHistory(await res.json());
@@ -141,4 +146,58 @@ export function priceAt(points: PricePoint[], t: number): number {
     price = p;
   }
   return price;
+}
+
+export interface CoinPrice {
+  /** Dollars (a float: found coins can cost a tiny fraction of a cent). */
+  usd: number;
+  change24h?: number;
+}
+
+/** Dollar value of a found coin balance, scaled to 18 decimals like the other totals. */
+export function coinValue18(balance: bigint, decimals: number, usd: number): bigint {
+  const dollars = (Number(balance) / 10 ** decimals) * usd;
+  return Number.isFinite(dollars) ? BigInt(Math.round(dollars * 1e6)) * 10n ** 12n : 0n;
+}
+
+const coinPriceCache = new Map<string, { at: number; price: CoinPrice | null }>();
+
+/** Current prices of found coins by CoinGecko id (cached for 2 minutes; missing ids are left out). */
+export async function fetchCoinPrices(ids: string[]): Promise<Record<string, CoinPrice>> {
+  const out: Record<string, CoinPrice> = {};
+  const stale = ids.filter((id) => {
+    const hit = coinPriceCache.get(id);
+    if (hit && Date.now() - hit.at < FRESH_MS) {
+      if (hit.price) out[id] = hit.price;
+      return false;
+    }
+    return true;
+  });
+  for (let i = 0; i < stale.length; i += 100) {
+    const chunk = stale.slice(i, i + 100);
+    try {
+      const res = await fetch(
+        `https://api.coingecko.com/api/v3/simple/price?ids=${chunk.map(encodeURIComponent).join(',')}&vs_currencies=usd&include_24hr_change=true`,
+      );
+      if (!res.ok) throw new Error(String(res.status));
+      const json = (await res.json()) as Record<string, { usd?: number; usd_24h_change?: number } | undefined>;
+      for (const id of chunk) {
+        const usd = json[id]?.usd;
+        const change = json[id]?.usd_24h_change;
+        const price =
+          typeof usd === 'number' && usd > 0
+            ? { usd, change24h: typeof change === 'number' && Number.isFinite(change) ? change : undefined }
+            : null;
+        coinPriceCache.set(id, { at: Date.now(), price });
+        if (price) out[id] = price;
+      }
+    } catch {
+      // Use the last price seen, if any.
+      for (const id of chunk) {
+        const hit = coinPriceCache.get(id);
+        if (hit?.price) out[id] = hit.price;
+      }
+    }
+  }
+  return out;
 }

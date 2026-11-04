@@ -107,6 +107,7 @@ function Routes() {
         <Stack.Screen name="goal" options={{ title: 'Savings goal' }} />
         <Stack.Screen name="tips" options={{ title: 'My tip cards' }} />
         <Stack.Screen name="addresses" options={{ title: 'My addresses' }} />
+        <Stack.Screen name="found" options={{ title: 'Found coins' }} />
       </Stack.Protected>
       <Stack.Protected guard={status === 'locked'} redirectTo={home}>
         <Stack.Screen name="unlock" options={{ headerShown: false }} />

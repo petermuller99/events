@@ -1,13 +1,35 @@
 export type ChainId = 'bitcoin' | 'ethereum' | 'bsc' | 'core' | 'solana';
 export type NetworkMode = 'testnet' | 'mainnet';
 export type TokenSymbol = 'USDT' | 'USDC';
+/** 'native' for the network's own coin, USDT/USDC, or f:<address> for a found coin. */
+export type AssetId = 'native' | TokenSymbol | `f:${string}`;
+
+/** A coin Pearl Wallet found in the wallet by itself (see found.ts), not one it ships with. */
+export interface FoundMeta {
+  /** CoinGecko coin id, for prices. */
+  coingeckoId: string;
+  name: string;
+}
 
 export interface TokenConfig {
-  symbol: TokenSymbol;
+  /** USDT/USDC for the coins Pearl Wallet ships with; any symbol for found coins. */
+  symbol: TokenSymbol | (string & {});
   /** EVM: 0x… checksummed address. Solana: base58 mint address. (Bitcoin has no tokens.) */
   address: string;
   /** Expected decimals. Checked against the contract at runtime before use. */
   decimals: number;
+  /** Set for found coins only. */
+  found?: FoundMeta;
+}
+
+/** Asset id of a token: its symbol for the coins Pearl Wallet ships with, f:<address> for found coins. */
+export function tokenAssetId(t: Pick<TokenConfig, 'symbol' | 'address' | 'found'>): AssetId {
+  return t.found ? `f:${t.address}` : (t.symbol as TokenSymbol);
+}
+
+/** USDT and USDC count as dollars; everything else has its own price. */
+export function isStableAssetId(id: string): boolean {
+  return id === 'USDT' || id === 'USDC';
 }
 
 export interface ChainConfig {

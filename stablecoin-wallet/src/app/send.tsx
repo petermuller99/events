@@ -32,6 +32,7 @@ import {
   listAssets,
   quoteTransfer,
   sendTransfer,
+  isStable,
   normalizeRecipient,
   validateRecipient,
   type AssetId,
@@ -89,7 +90,9 @@ export default function Send() {
   // Wait for the price before Bitcoin amounts can be typed, so the same text can't switch
   // from meaning BTC to meaning dollars while it's being entered.
   const amountReady = !isBitcoin || prices != null;
-  const dollarEntry = !!asset.contract || btcPrice != null;
+  // USDT/USDC are typed in dollars; found coins in their own units.
+  const stable = isStable(asset);
+  const dollarEntry = stable || btcPrice != null;
   const fees = isBitcoin && feeOptions?.mode === mode ? feeOptions.options : null;
 
   useEffect(() => {
@@ -257,6 +260,12 @@ export default function Send() {
             {chain.nativeSymbol}. Next time it’s free.
           </Banner>
         ) : null}
+        {asset.found ? (
+          <Banner tone="info">
+            {asset.symbol} is a coin Pearl Wallet found in the wallet. This is a plain transfer: it never lets the coin
+            spend your money. Some coins keep a small cut when they’re sent, so the person may get a little less.
+          </Banner>
+        ) : null}
         {quote.notes.map((n) => (
           <Banner key={n} tone="info">
             {n}
@@ -294,7 +303,7 @@ export default function Send() {
             setAssetId(id);
             setError(null);
           }}
-          options={assets.map((a) => ({ value: a.id, label: a.contract ? a.symbol : `${a.symbol} (fee coin)` }))}
+          options={assets.map((a) => ({ value: a.id, label: a.found ? `${a.symbol} (found)` : a.contract ? a.symbol : `${a.symbol} (fee coin)` }))}
         />
       ) : null}
 
@@ -336,14 +345,14 @@ export default function Send() {
                 }
               })()}You have ${balance != null ? satsToDollars(balance) : '…'}`
             : balance != null
-              ? `You have ${asset.contract ? '$' : ''}${formatAmount(balance, asset.decimals, asset.contract ? 2 : 6, asset.contract ? 2 : 0)} ${asset.symbol}`
+              ? `You have ${stable ? '$' : ''}${formatAmount(balance, asset.decimals, stable ? 2 : 6, stable ? 2 : 0)} ${asset.symbol}`
               : balances?.error ?? '…'}
         </Text>
       </View>
       {/* Max only for tokens: for the native coin the fee has to come out of it too. */}
       {asset.contract ? (
         <View style={st.quick}>
-          {['1', '5', '10'].map((v) => (
+          {(stable ? ['1', '5', '10'] : []).map((v) => (
             <Pressable key={v} style={st.quickButton} onPress={() => setAmountText(v)} accessibilityRole="button">
               <Text style={st.quickText}>${v}</Text>
             </Pressable>

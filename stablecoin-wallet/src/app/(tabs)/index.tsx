@@ -10,20 +10,24 @@ import { ChangeLabel, LineChart, RangeTabs } from '../../components/Chart';
 import { ListCard, ListRow, TokenBadge } from '../../components/money';
 import { Banner, brandImages, colors, honeyGradient, Screen, Sticker, Text } from '../../components/ui';
 import { formatAmount, formatDollars } from '../../lib/amount';
-import type { ChainId } from '../../lib/config';
+import { isStableAssetId, type ChainId } from '../../lib/config';
+import { allFound, FOUND_MIN_USD, loadFound, scanFound } from '../../lib/found';
 import { portfolioSeries, type Holding } from '../../lib/portfolio';
 import {
   change24h,
+  coinValue18,
+  fetchCoinPrices,
   fetchNativePrices,
   fetchPriceHistory,
   nativeValue,
   RANGES,
+  type CoinPrice,
   type NativePrices,
   type PricePoint,
   type Range,
 } from '../../lib/prices';
 import { checkForUpdate, type UpdateInfo } from '../../lib/updates';
-import { fetchAllBalances, type ChainBalances } from '../../lib/wallet';
+import { fetchAllBalances, isStable, type ChainBalances } from '../../lib/wallet';
 import { useActivity } from '../../state/ActivityContext';
 import { useTips } from '../../state/TipsContext';
 import { useUnlockedWallet } from '../../state/WalletContext';
@@ -35,7 +39,7 @@ function receivedToday(items: ActivityItem[]): bigint {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
   return items
-    .filter((i) => i.direction === 'in' && i.assetId !== 'native' && i.status === 'confirmed' && i.timestamp >= start.getTime())
+    .filter((i) => i.direction === 'in' && isStableAssetId(i.assetId) && i.status === 'confirmed' && i.timestamp >= start.getTime())
     .reduce((sum, i) => sum + BigInt(i.amount) * 10n ** BigInt(18 - i.decimals), 0n);
 }
 
@@ -49,14 +53,32 @@ function greeting(items: ActivityItem[], total: bigint | null): string {
   return hour < 12 ? 'Good morning! ☀️' : hour < 18 ? 'Good afternoon! 🌼' : 'Good evening! 🌙';
 }
 
+interface Prices {
+  native: NativePrices;
+  /** Found coins, by CoinGecko id. */
+  coins: Record<string, CoinPrice>;
+}
+
 /**
  * Dollar value of one coin, scaled to 18 decimals so coins can be added up. Stablecoins
- * count as $1; fee coins (BTC, ETH, BNB, CORE, SOL) use the current price, or null without one.
+ * count as $1; fee coins (BTC, ETH, BNB, CORE, SOL) and found coins use the current
+ * price, or null without one.
  */
-function coinValue(row: ChainBalances, asset: ChainBalances['assets'][number]['asset'], balance: bigint, prices: NativePrices): bigint | null {
+function coinValue(row: ChainBalances, asset: ChainBalances['assets'][number]['asset'], balance: bigint, prices: Prices): bigint | null {
+  if (asset.found) {
+    const p = prices.coins[asset.found.coingeckoId];
+    return p ? coinValue18(balance, asset.decimals, p.usd) : null;
+  }
   if (asset.contract) return balance * 10n ** BigInt(18 - asset.decimals);
-  const price = prices[row.chain.id];
+  const price = prices.native[row.chain.id];
   return price == null ? null : nativeValue(balance, asset.decimals, price);
+}
+
+const MIN_FOUND_18 = BigInt(Math.round(FOUND_MIN_USD * 1e6)) * 10n ** 12n;
+
+/** A found coin is only listed (and counted) while it's worth at least the minimum. */
+function counts(asset: ChainBalances['assets'][number]['asset'], value: bigint | null): boolean {
+  return !asset.found || (value != null && value >= MIN_FOUND_18);
 }
 
 /** Most valuable first, e.g. $100 USDT before $20 SOL; coins without a price go last. */
@@ -66,12 +88,43 @@ function byValue(a: { value: bigint | null }, b: { value: bigint | null }): numb
 }
 
 /** Sum of all coins' dollar values. */
-function totalValue(rows: ChainBalances[], prices: NativePrices): bigint {
+function totalValue(rows: ChainBalances[], prices: Prices): bigint {
   let total = 0n;
   for (const row of rows) {
-    for (const { asset, balance } of row.assets) total += coinValue(row, asset, balance, prices) ?? 0n;
+    for (const { asset, balance } of row.assets) {
+      const value = coinValue(row, asset, balance, prices);
+      if (counts(asset, value)) total += value ?? 0n;
+    }
   }
   return total;
+}
+
+type Coin = ChainBalances['assets'][number] & { chain: ChainBalances['chain']; value: bigint | null };
+
+function CoinRow({ coin, prices, last }: { coin: Coin; prices: Prices; last: boolean }) {
+  const { asset, balance, chain, value } = coin;
+  const change = asset.found ? prices.coins[asset.found.coingeckoId]?.change24h : !asset.contract ? change24h(chain.id) : undefined;
+  return (
+    <ListRow
+      last={last}
+      left={<TokenBadge symbol={asset.symbol} chain={chain.id} native={!asset.contract} found={!!asset.found} />}
+      title={asset.symbol}
+      subtitle={isStable(asset) ? chain.name : `${formatAmount(balance, asset.decimals, 4)} ${asset.symbol} · ${chain.name}`}
+      right={
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={s.coinAmount}>
+            {value == null ? `${formatAmount(balance, asset.decimals, 4)} ${asset.symbol}` : `$${formatDollars(value, 18)}`}
+          </Text>
+          {change != null ? (
+            <Text style={[s.coinChange, { color: change >= 0 ? colors.success : colors.pinkDark }]}>
+              {change >= 0 ? '▲' : '▼'} {Math.abs(change).toFixed(1)}%
+            </Text>
+          ) : null}
+        </View>
+      }
+      onPress={() => router.push({ pathname: '/coin', params: { chain: chain.id, asset: asset.id } })}
+    />
+  );
 }
 
 export default function Home() {
@@ -79,7 +132,7 @@ export default function Home() {
   const activity = useActivity();
   const tips = useTips();
   const [rows, setRows] = useState<ChainBalances[] | null>(null);
-  const [prices, setPrices] = useState<NativePrices>({});
+  const [prices, setPrices] = useState<Prices>({ native: {}, coins: {} });
   const [refreshing, setRefreshing] = useState(false);
   const [goal, setGoal] = useState<SavingsGoal | null>(null);
   const [range, setRange] = useState<Range>('1W');
@@ -106,21 +159,42 @@ export default function Home() {
   const load = useCallback(async () => {
     const id = ++request.current;
     setRefreshing(true);
+    await loadFound();
     const [result, latestPrices] = await Promise.all([fetchAllBalances(mode, keys), fetchNativePrices()]);
+    const ids = [...new Set(result.flatMap((r) => r.assets.flatMap((a) => (a.asset.found ? [a.asset.found.coingeckoId] : []))))];
+    const coinPrices = ids.length ? await fetchCoinPrices(ids) : {};
     // Ignore a slow response from before a network switch.
     if (id === request.current) {
       setRows(result);
-      setPrices(latestPrices);
+      setPrices({ native: latestPrices, coins: coinPrices });
       setLoadedAt(Date.now());
       setRefreshing(false);
     }
   }, [mode, keys]);
 
+  // Look for coins that arrived in the wallet by themselves (real money, every few hours).
+  const scanning = useRef(false);
+  const scan = useCallback(
+    async (force = false) => {
+      if (mode !== 'mainnet' || scanning.current) return;
+      scanning.current = true;
+      try {
+        if (await scanFound({ evm: keys.evm.address, solana: keys.solana.address }, force)) load();
+      } catch {
+        // Try again next time.
+      } finally {
+        scanning.current = false;
+      }
+    },
+    [mode, keys, load],
+  );
+
   useFocusEffect(
     useCallback(() => {
       load();
       loadGoal().then(setGoal);
-    }, [load]),
+      scan();
+    }, [load, scan]),
   );
 
   // New activity means balances changed: reload them.
@@ -135,15 +209,22 @@ export default function Home() {
   const refresh = () => {
     load();
     activity.refresh();
+    scan(true);
   };
 
   const total = rows ? totalValue(rows, prices) : 0n;
   const dollars = Number(total / 10n ** 16n) / 100;
   const percent = goal ? goalPercent(goal, dollars) : 0;
-  const coins = (
+  const allCoins = (
     rows?.flatMap((r) => r.assets.map((a) => ({ ...a, chain: r.chain, value: coinValue(r, a.asset, a.balance, prices) }))) ??
     []
-  ).sort(byValue);
+  )
+    .filter((c) => counts(c.asset, c.value))
+    .sort(byValue);
+  const coins = allCoins.filter((c) => !c.asset.found);
+  const foundCoins = allCoins.filter((c) => c.asset.found);
+  const foundTotal = foundCoins.reduce((sum, c) => sum + (c.value ?? 0n), 0n);
+  const hiddenCount = mode === 'mainnet' ? allFound().length - foundCoins.length : 0;
   const failed = rows?.filter((r) => r.error) ?? [];
 
   // Price history only for the fee coins actually held, to keep requests down.
@@ -167,16 +248,22 @@ export default function Home() {
   const series = useMemo(() => {
     if (!rows) return [];
     const holdings: Holding[] = rows.flatMap((r) =>
-      r.assets.map(({ asset, balance }) => ({
-        chain: r.chain.id,
-        assetId: asset.id,
-        decimals: asset.decimals,
-        balance,
-        stable: !!asset.contract,
-      })),
+      r.assets
+        .filter(({ asset, balance }) => counts(asset, coinValue(r, asset, balance, prices)))
+        .map(({ asset, balance }) => ({
+          chain: r.chain.id,
+          assetId: asset.id,
+          decimals: asset.decimals,
+          balance,
+          stable: isStable(asset),
+          priceKey: asset.found?.coingeckoId,
+        })),
     );
     const now = loadedAt;
-    const current = Object.fromEntries(Object.entries(prices).map(([c, p]) => [c, Number(p) / 1e6]));
+    const current: Record<string, number> = {
+      ...Object.fromEntries(Object.entries(prices.native).map(([c, p]) => [c, Number(p) / 1e6])),
+      ...Object.fromEntries(Object.entries(prices.coins).map(([id, p]) => [id, p.usd])),
+    };
     const data = history?.key === historyKey ? history.data : {};
     return portfolioSeries(holdings, activity.items, data, current, now - RANGES[range] * 86_400_000, now);
   }, [rows, prices, history, historyKey, activity.items, range, loadedAt]);
@@ -231,6 +318,7 @@ export default function Home() {
             <Text style={s.balanceAmount} adjustsFontSizeToFit numberOfLines={1}>
               {rows ? `$${formatDollars(total, 18)}` : '…'}
             </Text>
+            {foundTotal > 0n ? <Text style={s.foundNote}>includes ${formatDollars(foundTotal, 18)} in found coins</Text> : null}
             {rows && total > 0n ? (
               <>
                 <ChangeLabel change={growth} range={range} />
@@ -315,36 +403,38 @@ export default function Home() {
         {coins.length === 0 ? (
           <ListRow title={rows ? 'No coins to show' : 'Loading…'} last />
         ) : (
-          coins.map(({ asset, balance, chain, value }, i) => (
-            <ListRow
-              key={`${chain.id}:${asset.id}`}
-              last={i === coins.length - 1}
-              left={<TokenBadge symbol={asset.symbol} chain={chain.id} native={!asset.contract} />}
-              title={asset.symbol}
-              subtitle={asset.contract ? chain.name : `${formatAmount(balance, asset.decimals, 4)} ${asset.symbol} · ${chain.name}`}
-              right={
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={s.coinAmount}>
-                    {value == null ? `${formatAmount(balance, asset.decimals, 4)} ${asset.symbol}` : `$${formatDollars(value, 18)}`}
-                  </Text>
-                  {!asset.contract && change24h(chain.id) != null ? (
-                    <Text style={[s.coinChange, { color: change24h(chain.id)! >= 0 ? colors.success : colors.pinkDark }]}>
-                      {change24h(chain.id)! >= 0 ? '▲' : '▼'} {Math.abs(change24h(chain.id)!).toFixed(1)}%
-                    </Text>
-                  ) : null}
-                </View>
-              }
-              onPress={() => router.push({ pathname: '/coin', params: { chain: chain.id, asset: asset.id } })}
-            />
-          ))
+          coins.map((c, i) => <CoinRow key={`${c.chain.id}:${c.asset.id}`} coin={c} prices={prices} last={i === coins.length - 1} />)
         )}
       </ListCard>
+      {foundCoins.length ? (
+        <>
+          <View style={s.foundHeader}>
+            <Text style={s.section}>Found in Pearl’s wallet</Text>
+            <View style={s.autoTag}>
+              <Text style={s.autoTagText}>AUTO</Text>
+            </View>
+          </View>
+          <ListCard>
+            {foundCoins.map((c, i) => (
+              <CoinRow key={`${c.chain.id}:${c.asset.id}`} coin={c} prices={prices} last={i === foundCoins.length - 1} />
+            ))}
+          </ListCard>
+        </>
+      ) : null}
+      {hiddenCount > 0 ? (
+        <Pressable accessibilityRole="button" onPress={() => router.push('/found')} style={({ pressed }) => [s.hidden, pressed && { opacity: 0.7 }]}>
+          <Text style={[s.muted, { flex: 1 }]}>
+            🙈 {hiddenCount} {hiddenCount === 1 ? 'coin' : 'coins'} hidden: worth too little or looked like a scam
+          </Text>
+          <Chevron color={colors.muted} />
+        </Pressable>
+      ) : null}
       {failed.map((r) => (
         <Banner key={r.chain.id} tone="danger" sticker="hmm">
           Couldn’t reach {r.chain.name}. Pull down to try again.
         </Banner>
       ))}
-      {coins.some((c) => c.value == null && c.balance > 0n) ? (
+      {coins.some((c) => !c.asset.contract && c.value == null && c.balance > 0n) ? (
         <Text style={s.fee}>Couldn’t get today’s prices, so BTC, ETH, BNB, CORE and SOL aren’t in your total yet.</Text>
       ) : null}
     </Screen>
@@ -459,4 +549,17 @@ const s = StyleSheet.create({
   updateButton: { backgroundColor: colors.text, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
   updateButtonText: { color: colors.honey, fontWeight: '700', fontSize: 14 },
   fee: { fontSize: 13, color: colors.muted, textAlign: 'center' },
+  foundNote: { fontSize: 13, fontWeight: '600', opacity: 0.8, marginRight: 96 },
+  foundHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
+  autoTag: { backgroundColor: colors.skyLight, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2, marginTop: 6 },
+  autoTagText: { fontSize: 11, fontWeight: '700', color: colors.skyDark },
+  hidden: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FFF3DC',
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
 });
