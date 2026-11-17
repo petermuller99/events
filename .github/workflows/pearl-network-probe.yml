@@ -1,7 +1,10 @@
-# Run by hand: prints what public network endpoints answer (read-only), to confirm
+# Runs when the probe changes: prints what public network endpoints answer (read-only), to confirm
 # the wallet's network settings. Takes about a minute.
 name: Pearl network probe
 on:
+  push:
+    branches: [claude/stablecoin-wallet-multi-chain-sc1vbq]
+    paths: ['.github/probe/**', '.github/workflows/pearl-network-probe.yml']
   workflow_dispatch:
 permissions:
   contents: read
