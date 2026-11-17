@@ -1,65 +1,55 @@
-// Read-only checks of public network endpoints, run by hand from the probe workflow.
-// Prints what each service answers so the wallet's settings can be confirmed.
-const post = async (url, body) => {
+// Read-only checks of public network endpoints, run from the probe workflow. Prints what
+// each service answers so the wallet's settings can be confirmed before they're used.
+const gql = async (url, query, variables) => {
   try {
-    const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-    const text = await res.text();
-    return `${res.status} ${text.slice(0, 400)}`;
+    const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query, variables }) });
+    return await res.json();
   } catch (e) {
-    return `ERR ${e.message}`;
+    return { error: e.message };
   }
 };
-const get = async (url) => {
-  try {
-    const res = await fetch(url);
-    const text = await res.text();
-    return `${res.status} ${text.slice(0, 300)}`;
-  } catch (e) {
-    return `ERR ${e.message}`;
-  }
-};
-const rpc = (method, params = []) => ({ jsonrpc: '2.0', id: 1, method, params });
-const SUI_ADDR = '0x0000000000000000000000000000000000000000000000000000000000000005';
+const MAIN = 'https://graphql.mainnet.sui.io/graphql';
+const TEST = 'https://graphql.testnet.sui.io/graphql';
 
-for (const [name, url] of [
-  ['sui mainnet json-rpc', 'https://fullnode.mainnet.sui.io:443'],
-  ['sui testnet json-rpc', 'https://fullnode.testnet.sui.io:443'],
+const typeQ = `query($n: String!) { __type(name: $n) { name kind
+  fields { name args { name type { name kind ofType { name kind ofType { name kind ofType { name } } } } } type { name kind ofType { name kind ofType { name kind ofType { name } } } } }
+  inputFields { name type { name kind ofType { name kind ofType { name } } } }
+  enumValues { name } } }`;
+const show = (t) => {
+  if (!t) return 'missing';
+  const ty = (x) => (x ? (x.name ?? `${x.kind}(${ty(x.ofType)})`) : '');
+  const parts = [];
+  for (const f of t.fields ?? []) parts.push(`${f.name}(${f.args.map((a) => `${a.name}:${ty(a.type)}`).join(',')}): ${ty(f.type)}`);
+  for (const f of t.inputFields ?? []) parts.push(`${f.name}: ${ty(f.type)}`);
+  for (const e of t.enumValues ?? []) parts.push(e.name);
+  return `${t.name} [${t.kind}]\n    ` + parts.join('\n    ');
+};
+for (const n of [
+  'Query', 'Mutation', 'Address', 'Balance', 'Coin', 'MoveObject', 'Object', 'ObjectFilter',
+  'Transaction', 'TransactionEffects', 'ExecutionResult', 'TransactionFilter', 'ExecutionStatus',
+  'BalanceChange', 'GasInput', 'Epoch', 'SimulationResult', 'AddressTransactionRelationship', 'TransactionKind',
 ]) {
-  console.log(`== ${name}`);
-  console.log(' chainId', await post(url, rpc('sui_getChainIdentifier')));
-  console.log(' gasPrice', await post(url, rpc('suix_getReferenceGasPrice')));
-  console.log(' balance', await post(url, rpc('suix_getBalance', [SUI_ADDR, '0x2::sui::SUI'])));
-  console.log(' coins', await post(url, rpc('suix_getCoins', [SUI_ADDR, '0x2::sui::SUI', null, 2])));
-  console.log(' txs', await post(url, rpc('suix_queryTransactionBlocks', [{ filter: { ToAddress: SUI_ADDR } }, null, 1, true])));
+  const r = await gql(MAIN, typeQ, { n });
+  console.log('== type', show(r?.data?.__type), r.errors ? JSON.stringify(r.errors).slice(0, 200) : '');
 }
-for (const [name, url] of [
-  ['sui mainnet graphql', 'https://graphql.mainnet.sui.io/graphql'],
-  ['sui testnet graphql', 'https://graphql.testnet.sui.io/graphql'],
-]) {
-  console.log(`== ${name}`);
-  console.log(' ', await post(url, { query: '{ chainIdentifier epoch { epochId referenceGasPrice } }' }));
+
+// A recent real transaction and its sender, to try reads against.
+const recent = await gql(MAIN, '{ transactions(last: 1) { nodes { digest sender { address } } } }');
+console.log('== recent', JSON.stringify(recent).slice(0, 400));
+const sender = recent?.data?.transactions?.nodes?.[0]?.sender?.address;
+if (sender) {
+  for (const q of [
+    `{ address(address: "${sender}") { balance(coinType: "0x2::sui::SUI") { coinType { repr } totalBalance } } }`,
+    `{ address(address: "${sender}") { balance(coinType: "0x2::sui::SUI") { totalBalance } } }`,
+    `{ address(address: "${sender}") { objects(first: 3, filter: { type: "0x2::coin::Coin<0x2::sui::SUI>" }) { nodes { address version digest contents { json } } } } }`,
+    `{ address(address: "${sender}") { coins(first: 3) { nodes { address version digest coinBalance } } } }`,
+    `{ address(address: "${sender}") { transactions(last: 2) { nodes { digest effects { status timestamp balanceChanges { nodes { owner { address } amount coinType { repr } } } } } } } }`,
+  ]) {
+    console.log('== read', q.slice(0, 90), '\n  ', JSON.stringify(await gql(MAIN, q)).slice(0, 700));
+  }
 }
-for (const [name, url] of [
-  ['cronos mainnet', 'https://evm.cronos.org'],
-  ['cronos testnet', 'https://evm-t3.cronos.org'],
-]) {
-  console.log(`== ${name}`);
-  console.log(' chainId', await post(url, rpc('eth_chainId')));
-  console.log(' block', await post(url, rpc('eth_getBlockByNumber', ['latest', false])).then((s) => s.slice(0, 200)));
-  console.log(' gasPrice', await post(url, rpc('eth_gasPrice')));
-  console.log(' priority', await post(url, rpc('eth_maxPriorityFeePerGas')));
-  console.log(' multicall3', await post(url, rpc('eth_getCode', ['0xcA11bde05977b3631167028862bE2a173976CA11', 'latest'])).then((s) => s.slice(0, 80)));
+const digest = recent?.data?.transactions?.nodes?.[0]?.digest;
+if (digest) {
+  console.log('== tx', JSON.stringify(await gql(MAIN, `{ transaction(digest: "${digest}") { digest effects { status } } }`)).slice(0, 300));
 }
-console.log('== coingecko');
-console.log(' prices', await get('https://api.coingecko.com/api/v3/simple/price?ids=sui,crypto-com-chain&vs_currencies=usd'));
-const list = await fetch('https://api.coingecko.com/api/v3/coins/list?include_platform=true').then((r) => r.json()).catch(() => []);
-const count = (p) => list.filter((c) => c.platforms && c.platforms[p]).length;
-console.log(' platforms cronos', count('cronos'), 'sui', count('sui'));
-console.log('== explorers/faucets');
-for (const u of [
-  'https://explorer.cronos.org/',
-  'https://explorer.cronos.org/testnet/',
-  'https://cronos.org/faucet',
-  'https://suiscan.xyz/mainnet/home',
-  'https://faucet.sui.io/',
-]) console.log(' ', u, (await get(u)).slice(0, 4));
+console.log('== testnet', JSON.stringify(await gql(TEST, '{ chainIdentifier epoch { referenceGasPrice } }')));
