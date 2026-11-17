@@ -1,6 +1,7 @@
 import { HDNodeWallet, Mnemonic } from 'ethers';
 import { deriveBitcoinKey, type BitcoinKey } from './bitcoin';
 import { deriveSolanaKey } from './solana';
+import { deriveSuiKey, type SuiKey } from './sui';
 
 // BIP-44 path: coin type 60 is Ethereum (shared by BSC). It matches MetaMask and
 // Trust Wallet, so the same phrase restores there too.
@@ -18,6 +19,8 @@ export interface WalletKeys {
   solana: AccountKey;
   /** Native SegWit (BIP84); the address depends on real or test money. */
   bitcoin: BitcoinKey;
+  /** ed25519 key on Sui's path; privateKey is the 32-byte seed. */
+  sui: SuiKey;
 }
 
 export function normalizeMnemonic(phrase: string): string {
@@ -46,5 +49,6 @@ export function deriveKeys(phrase: string): WalletKeys {
     evm: { address: evm.address, privateKey: evm.privateKey },
     solana: deriveSolanaKey(seed),
     bitcoin: deriveBitcoinKey(root),
+    sui: deriveSuiKey(seed),
   };
 }

@@ -59,6 +59,8 @@ export const chainColors: Record<string, string> = {
   ethereum: '#627EEA',
   bsc: '#E0A800',
   core: '#FD8F17',
+  cronos: '#002D74',
+  sui: '#4DA2FF',
 };
 
 const stickers = {

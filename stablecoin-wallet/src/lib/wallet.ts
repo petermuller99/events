@@ -37,6 +37,17 @@ import {
   transferSolInstruction,
   transferTokenInstruction,
 } from './solana';
+import {
+  encodeSuiTransfer,
+  isSuiAddress,
+  pickGasCoins,
+  signSuiTransaction,
+  SUI_MAX_GAS_PRICE,
+  SuiClient,
+  suiDigest,
+  suiGasBudget,
+  type SuiSource,
+} from './sui';
 import { isValidTronAddress } from './tron-address';
 
 // Chain-agnostic API used by the screens. Everything below dispatches to the
@@ -68,7 +79,7 @@ export interface ChainBalances {
 }
 
 function accountFor(keys: WalletKeys, chain: ChainId) {
-  return chain === 'solana' ? keys.solana : keys.evm;
+  return chain === 'solana' ? keys.solana : chain === 'sui' ? keys.sui : keys.evm;
 }
 
 /** This wallet's address on a network. Bitcoin's differs between real and test money. */
@@ -129,6 +140,13 @@ export function findAsset(mode: NetworkMode, chainId: ChainId, id: AssetId): Ass
   return listAssets(mode, chainId).find((a) => a.id === id);
 }
 
+const suiClients = new Map<string, SuiClient>();
+export function suiClient(chain: ChainConfig): SuiClient {
+  let client = suiClients.get(chain.rpcUrl);
+  if (!client) suiClients.set(chain.rpcUrl, (client = new SuiClient(chain.rpcUrl)));
+  return client;
+}
+
 const solanaClients = new Map<string, SolanaClient>();
 export function solanaClient(chain: ChainConfig): SolanaClient {
   let client = solanaClients.get(chain.rpcUrl);
@@ -163,6 +181,7 @@ async function getBalance(chain: ChainConfig, asset: Asset, owner: string): Prom
     return asset.contract ? client.getTokenBalance(owner, asset.contract) : client.getSolBalance(owner);
   }
   if (chain.kind === 'bitcoin') return bitcoinClient(chain).getBalance(owner);
+  if (chain.kind === 'sui') return suiClient(chain).getBalance(owner);
   return asset.contract
     ? evm.getTokenBalance(chain, asset.contract, owner)
     : evm.getNativeBalance(chain, owner);
@@ -201,6 +220,7 @@ export function fetchAllBalances(mode: NetworkMode, keys: WalletKeys): Promise<C
 export function normalizeRecipient(chainId: ChainId, to: string): string {
   const value = to.trim();
   if (chainId === 'bitcoin' && /^(bc1|tb1)/i.test(value)) return value.toLowerCase();
+  if (chainId === 'sui' && isSuiAddress(value)) return value.toLowerCase();
   return value;
 }
 
@@ -230,6 +250,16 @@ export function validateRecipient(
   if (checkBitcoinAddress(value, 'mainnet') !== 'invalid' || checkBitcoinAddress(value, 'testnet') !== 'invalid') {
     return 'This is a Bitcoin address. Choose the Bitcoin network instead.';
   }
+  // Sui and Ethereum-style addresses both start with 0x; Sui's are 64 hex digits, not 40.
+  if (chainId === 'sui') {
+    if (/^0x[0-9a-fA-F]{40}$/.test(value)) return 'This is an Ethereum/BNB/Core/Cronos address. Choose that network instead.';
+    if (!value.startsWith('0x') && checkSolanaAddress(value) === 'ok') {
+      return 'This is a Solana address. Choose the Solana network instead.';
+    }
+    if (!isSuiAddress(value)) return 'Not a valid Sui address (0x and 64 letters/numbers)';
+    return ownAddress && value === ownAddress.toLowerCase() ? 'This is your own address' : null;
+  }
+  if (isSuiAddress(value)) return 'This is a Sui address. Choose the Sui network instead.';
   if (chainId === 'solana') {
     if (value.startsWith('0x')) return 'This is an Ethereum/BSC address. Choose that network instead.';
     const check = checkSolanaAddress(value);
@@ -271,6 +301,8 @@ export interface FeeQuote {
   evmQuote?: evm.EvmFeeQuote;
   /** Bitcoin: the coins to spend and outputs, checked again before signing. */
   bitcoinPlan?: BitcoinPlan;
+  /** Sui: where the SUI comes from and the exact fee price and cap that get signed. */
+  suiPlan?: { source: SuiSource; gasPrice: bigint; gasBudget: bigint };
 }
 
 export async function quoteTransfer(
@@ -299,6 +331,8 @@ export async function quoteTransfer(
     return { fee, isMaximum: false, nativeBalance, nativeRequired: fee + req.amount, notes, bitcoinPlan: plan };
   }
 
+  if (chain.kind === 'sui') return quoteSui(chain, from, req);
+
   if (chain.kind === 'evm') {
     const [evmQuote, nativeBalance] = await Promise.all([
       evm.estimateTransfer(chain, { from, to, amount: req.amount, token: req.asset.contract }),
@@ -309,6 +343,41 @@ export async function quoteTransfer(
   }
 
   return quoteSolana(chain, from, to, req);
+}
+
+function randomU32(): number {
+  const a = new Uint32Array(1);
+  globalThis.crypto.getRandomValues(a);
+  return a[0];
+}
+
+async function quoteSui(chain: ChainConfig, from: string, req: TransferRequest): Promise<FeeQuote> {
+  const client = suiClient(chain);
+  const [balances, network] = await Promise.all([client.getBalances(from), client.getNetwork()]);
+  if (network.gasPrice <= 0n || network.gasPrice > SUI_MAX_GAS_PRICE) {
+    throw new Error('Sui network fees look unusual right now. Try again later.');
+  }
+  const gasBudget = suiGasBudget(network.gasPrice);
+  const needed = req.amount + gasBudget;
+  let source: SuiSource;
+  // Pay from coin objects when they cover it, otherwise from the address balance.
+  if (balances.coins >= needed) {
+    source = { kind: 'coins', gasCoins: pickGasCoins(await client.getCoins(from), req.amount, gasBudget) };
+  } else if (balances.addressBalance >= needed) {
+    source = { kind: 'address-balance', epoch: network.epoch, chain: network.chain, nonce: randomU32() };
+  } else if (balances.total >= needed) {
+    throw new Error('Your SUI is held in two parts on Sui and neither covers this. Send a little less.');
+  } else {
+    throw new Error('Not enough SUI to send this amount and pay the fee');
+  }
+  return {
+    fee: gasBudget,
+    isMaximum: true,
+    nativeBalance: balances.total,
+    nativeRequired: needed,
+    notes: [],
+    suiPlan: { source, gasPrice: network.gasPrice, gasBudget },
+  };
 }
 
 async function quoteSolana(chain: ChainConfig, from: string, to: string, req: TransferRequest): Promise<FeeQuote> {
@@ -384,6 +453,15 @@ export async function sendTransfer(
   }
   const privateKey = privateKeyFor(keys, req.asset.chain);
   let hash: string;
+
+  if (chain.kind === 'sui') {
+    if (!quote.suiPlan) throw new Error('Missing fee quote');
+    const bytes = encodeSuiTransfer({ sender: from, recipient: to, amount: req.amount, ...quote.suiPlan });
+    await suiClient(chain).execute(bytes, signSuiTransaction(bytes, privateKey));
+    // Track the digest of what we signed, not whatever the server answers.
+    const digest = suiDigest(bytes);
+    return { hash: digest, explorerUrl: chain.explorerTxUrl(digest) };
+  }
 
   if (chain.kind === 'evm') {
     if (!quote.evmQuote) throw new Error('Missing fee quote');

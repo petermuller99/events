@@ -80,8 +80,14 @@ export default function Receive() {
       {chain.kind === 'bitcoin' ? (
         <Body muted>The same 12 words open this address in BlueWallet or Trust Wallet.</Body>
       ) : null}
+      {chain.kind === 'sui' ? (
+        <Body muted>
+          This Sui address is different from Pearl’s Ethereum one, even though both start with 0x. The same 12 words
+          open it in Slush or Phantom.
+        </Body>
+      ) : null}
       {chain.kind === 'evm' ? (
-        <Body muted>This same address is also Pearl’s address on Ethereum, BNB Chain and Core.</Body>
+        <Body muted>This same address is also Pearl’s address on Ethereum, BNB Chain, Core and Cronos.</Body>
       ) : null}
       {mode === 'mainnet' ? (
         <View style={st.gift}>

@@ -51,7 +51,7 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
   const addresses = useMemo(
     () =>
       keys
-        ? { evm: keys.evm.address, solana: keys.solana.address, bitcoin: bitcoinAddress(keys.bitcoin, mode) }
+        ? { evm: keys.evm.address, solana: keys.solana.address, bitcoin: bitcoinAddress(keys.bitcoin, mode), sui: keys.sui.address }
         : null,
     [keys, mode],
   );

@@ -8,7 +8,7 @@ import {
 } from '../src/lib/activity';
 import { getChain } from '../src/lib/config';
 import { describeOutcome } from '../src/lib/notify-text';
-import { fromSolanaTx } from '../src/lib/activity';
+import { fromSolanaTx, fromSuiTxs } from '../src/lib/activity';
 import { defaultPrefs } from '../src/lib/prefs';
 
 const bscTest = getChain('testnet', 'bsc');
@@ -133,5 +133,36 @@ describe('Solana transaction parsing', () => {
     expect(fromSolanaTx(solana, ME, 's', tx(null))[0]).toMatchObject({ direction: 'out', symbol: 'SOL', amount: '100000000', counterparty: FRIEND });
     expect(fromSolanaTx(solana, FRIEND, 's', tx(null))[0]).toMatchObject({ direction: 'in', amount: '100000000', counterparty: ME });
     expect(fromSolanaTx(solana, ME, 's', tx({ InstructionError: [0, 'Custom'] }))).toEqual([]);
+  });
+});
+
+describe('Sui activity', () => {
+  const sui = getChain('mainnet', 'sui');
+  const ME = '0x' + 'aa'.repeat(32);
+  const FRIEND = '0x' + 'bb'.repeat(32);
+  const tx = (sender: string, changes: [string, bigint][], status: 'SUCCESS' | 'FAILURE' = 'SUCCESS') => ({
+    digest: 'D' + changes.length + sender.slice(2, 4),
+    sender,
+    status,
+    timestamp: '2026-11-17T13:32:40.347Z',
+    changes: changes.map(([owner, amount]) => ({ owner, amount })),
+  });
+
+  it('reads SUI in, SUI sent without the fee, and skips fee-only and failed ones', () => {
+    const items = fromSuiTxs(sui, ME, [
+      tx(FRIEND, [[FRIEND, -2_001_000n], [ME, 2_000_000n]]),
+      tx(ME, [[ME, -1_502_000n], [FRIEND, 1_500_000n]]),
+      tx(ME, [[ME, -2_000n]]),
+      tx(FRIEND, [[ME, 5n]], 'FAILURE'),
+    ]);
+    expect(items.map((i) => [i.direction, i.amount, i.counterparty])).toEqual([
+      ['in', '2000000', FRIEND],
+      ['out', '1500000', FRIEND],
+    ]);
+    expect(items[0]).toMatchObject({ assetId: 'native', symbol: 'SUI', decimals: 9, timestamp: Date.parse('2026-11-17T13:32:40.347Z') });
+  });
+
+  it('never shows a stranger’s transaction as spending our SUI', () => {
+    expect(fromSuiTxs(sui, ME, [tx(FRIEND, [[ME, -10n], [FRIEND, 10n]])])).toEqual([]);
   });
 });

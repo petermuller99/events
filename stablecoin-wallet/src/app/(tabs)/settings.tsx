@@ -146,7 +146,7 @@ export default function Settings() {
           subtitle={mode === 'testnet' ? 'On: practising with free test coins' : 'Practise with free test coins'}
           right={<Toggle label="Test money" value={mode === 'testnet'} onChange={setTestMoney} />}
         />
-        <ListRow title="Networks" subtitle="Bitcoin · Ethereum · BNB Chain · Core · Solana" />
+        <ListRow title="Networks" subtitle="Bitcoin · Ethereum · BNB Chain · Core · Cronos · Solana · Sui" />
         <ListRow
           title="Found coins"
           subtitle="Other coins in the wallet, shown if they’re real and worth $0.10 or more"

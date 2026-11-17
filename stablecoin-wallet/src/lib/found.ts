@@ -32,6 +32,7 @@ export const PLATFORMS: Partial<Record<ChainId, string>> = {
   ethereum: 'ethereum',
   bsc: 'binance-smart-chain',
   core: 'core',
+  cronos: 'cronos',
   solana: 'solana',
 };
 const FOUND_CHAINS = Object.keys(PLATFORMS) as ChainId[];

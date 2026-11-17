@@ -313,7 +313,7 @@ export default function Send() {
         onChangeText={setTo}
         onBlur={() => setTouched(true)}
         placeholder={
-          chain.kind === 'solana' ? 'Solana address' : isBitcoin ? `Bitcoin address (${mode === 'mainnet' ? 'bc1' : 'tb1'}…)` : 'Address (0x…)'
+          chain.kind === 'solana' ? 'Solana address' : chain.kind === 'sui' ? 'Sui address (0x…, 66 characters)' : isBitcoin ? `Bitcoin address (${mode === 'mainnet' ? 'bc1' : 'tb1'}…)` : 'Address (0x…)'
         }
         error={recipientError}
         right={<LinkButton title="Paste" onPress={pasteAddress} />}
@@ -412,7 +412,7 @@ const SPEEDS: Record<BitcoinSpeed, { title: string; time: string }> = {
   fast: { title: 'Fast', time: '~10 min' },
 };
 
-const SHORT_NAMES: Record<ChainId, string> = { bitcoin: 'Bitcoin', ethereum: 'Ethereum', bsc: 'BNB Chain', core: 'Core', solana: 'Solana' };
+const SHORT_NAMES: Record<ChainId, string> = { bitcoin: 'Bitcoin', ethereum: 'Ethereum', bsc: 'BNB Chain', core: 'Core', cronos: 'Cronos', solana: 'Solana', sui: 'Sui' };
 
 const st = StyleSheet.create({
   label: { fontSize: 15, fontWeight: '600', marginBottom: -6 },

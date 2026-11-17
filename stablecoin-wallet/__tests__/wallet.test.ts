@@ -24,6 +24,14 @@ describe('token config', () => {
     expect(listAssets('mainnet', 'ethereum').map((a) => a.symbol)).toEqual(['USDT', 'ETH']);
     expect(listAssets('mainnet', 'core').map((a) => a.symbol)).toEqual(['CORE']);
     expect(listAssets('testnet', 'core').map((a) => a.symbol)).toEqual(['tCORE2']);
+    expect(listAssets('mainnet', 'cronos').map((a) => a.symbol)).toEqual(['CRO']);
+    expect(listAssets('mainnet', 'sui').map((a) => a.symbol)).toEqual(['SUI']);
+  });
+
+  it('configures Cronos as an EVM network and Sui as its own kind', () => {
+    expect(CHAINS.mainnet.cronos).toMatchObject({ kind: 'evm', chainId: 25, nativeDecimals: 18 });
+    expect(CHAINS.testnet.cronos).toMatchObject({ kind: 'evm', chainId: 338 });
+    expect(CHAINS.mainnet.sui).toMatchObject({ kind: 'sui', nativeSymbol: 'SUI', nativeDecimals: 9 });
   });
 
   it('configures Core as an EVM network with its own chain ids', () => {
@@ -40,6 +48,7 @@ describe('validateRecipient', () => {
     expect(validateRecipient('ethereum', evmAddr)).toBeNull();
     expect(validateRecipient('bsc', evmAddr.toLowerCase())).toBeNull();
     expect(validateRecipient('core', evmAddr)).toBeNull();
+    expect(validateRecipient('cronos', evmAddr)).toBeNull();
   });
 
   it('blocks sending to the wrong network', () => {
@@ -77,6 +86,20 @@ describe('validateRecipient', () => {
     expect(validateRecipient('bitcoin', btc.toUpperCase())).toBeNull();
     expect(validateRecipient('bitcoin', btc.toUpperCase(), btc)).toMatch(/own address/);
     expect(normalizeRecipient('bitcoin', '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa')).toBe('1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa');
+  });
+
+  it('keeps Sui and Ethereum-style addresses apart, though both start with 0x', () => {
+    const sui = '0x5e93a736d04fbb25737aa40bee40171ef79f65fae833749e3c089fe7cc2161f1';
+    expect(validateRecipient('sui', sui)).toBeNull();
+    expect(validateRecipient('sui', sui.toUpperCase().replace('0X', '0x'))).toBeNull();
+    expect(normalizeRecipient('sui', ` ${sui.toUpperCase().replace('0X', '0x')} `)).toBe(sui);
+    expect(validateRecipient('sui', evmAddr)).toMatch(/Ethereum\/BNB\/Core\/Cronos/);
+    expect(validateRecipient('sui', sui.slice(0, -2))).toMatch(/Not a valid Sui address/);
+    expect(validateRecipient('sui', '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM')).toMatch(/Solana address/);
+    expect(validateRecipient('sui', sui, sui)).toMatch(/own address/);
+    for (const chain of ['ethereum', 'bsc', 'core', 'cronos', 'solana'] as const) {
+      expect(validateRecipient(chain, sui)).toMatch(/Sui address/);
+    }
   });
 
   it('flags the wallet sending to itself', () => {

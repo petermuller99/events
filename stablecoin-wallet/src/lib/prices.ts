@@ -7,6 +7,8 @@ const COIN_IDS: Record<ChainId, string> = {
   ethereum: 'ethereum',
   bsc: 'binancecoin',
   core: 'coredaoorg',
+  cronos: 'crypto-com-chain',
+  sui: 'sui',
   solana: 'solana',
 };
 
@@ -62,7 +64,7 @@ export function parsePrices(json: unknown): NativePrices {
 }
 
 /**
- * Current prices of BTC, ETH, BNB, CORE and SOL. Falls back to the last prices seen if the
+ * Current prices of BTC, ETH, BNB, CORE, CRO, SOL and SUI. Falls back to the last prices seen if the
  * price service can't be reached, or to none at all.
  */
 export async function fetchNativePrices(): Promise<NativePrices> {

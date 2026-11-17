@@ -2,6 +2,7 @@ import { getAddress } from 'ethers';
 import { netChange, type EsploraTx } from './bitcoin';
 import { tokenAssetId, type ChainConfig, type ChainId, type NetworkMode } from './config';
 import type { SolanaParsedTx, SolanaTokenBalance } from './solana';
+import type { SuiTx } from './sui';
 import type { AssetId } from './wallet';
 
 // Activity = money in and out of this wallet. Items come from three places:
@@ -80,6 +81,52 @@ export function fromBitcoinTxs(chain: ChainConfig, owner: string, txs: EsploraTx
       counterparty,
       hash: tx.txid,
       timestamp: (tx.status.block_time ?? Math.floor(Date.now() / 1000)) * 1000,
+      status: 'confirmed',
+    });
+  }
+  return out;
+}
+
+/**
+ * Sui transactions that touched the address, from their SUI balance changes. A send's
+ * amount is what the other side received (so the fee is left out); money in is what
+ * arrived here.
+ */
+export function fromSuiTxs(chain: ChainConfig, owner: string, txs: SuiTx[]): ActivityItem[] {
+  const me = owner.toLowerCase();
+  const out: ActivityItem[] = [];
+  for (const tx of txs) {
+    if (tx.status !== 'SUCCESS') continue;
+    const mine = tx.changes.filter((c) => c.owner.toLowerCase() === me).reduce((sum, c) => sum + c.amount, 0n);
+    if (mine === 0n) continue;
+    const others = tx.changes.filter((c) => c.owner.toLowerCase() !== me);
+    let direction: 'in' | 'out';
+    let amount: bigint;
+    let counterparty: string | undefined;
+    if (tx.sender?.toLowerCase() === me) {
+      // Our own transaction: a send to whoever gained, or just a fee if nobody did.
+      const to = others.filter((c) => c.amount > 0n).sort((a, b) => (a.amount > b.amount ? -1 : 1))[0];
+      if (!to) continue;
+      direction = 'out';
+      amount = to.amount;
+      counterparty = to.owner;
+    } else {
+      if (mine < 0n) continue; // someone else's transaction can't spend our SUI
+      direction = 'in';
+      amount = mine;
+      counterparty = tx.sender;
+    }
+    out.push({
+      id: activityId(chain.id, tx.digest, 'native', direction),
+      chain: chain.id,
+      assetId: 'native',
+      symbol: chain.nativeSymbol,
+      decimals: chain.nativeDecimals,
+      direction,
+      amount: amount.toString(),
+      counterparty,
+      hash: tx.digest,
+      timestamp: tx.timestamp ? Date.parse(tx.timestamp) : Date.now(),
       status: 'confirmed',
     });
   }

@@ -75,6 +75,13 @@ jobs:
           CORE_LIVE: '1'
         run: npx jest __tests__/core.live.test.ts
 
+      # And Cronos and Sui: chain ids, fees, Sui's GraphQL reads and CoinGecko ids.
+      - name: Cronos and Sui network check
+        continue-on-error: true
+        env:
+          CHAINS_LIVE: '1'
+        run: npx jest __tests__/chains.live.test.ts
+
       # And the services found coins rely on: CoinGecko's lists and Multicall3.
       - name: Found coins check
         continue-on-error: true

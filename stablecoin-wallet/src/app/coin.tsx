@@ -30,6 +30,8 @@ const LINE_COLORS: Record<string, string> = {
   ethereum: '#627EEA',
   bsc: '#E0A800',
   core: '#F08000',
+  cronos: '#1A4FA0',
+  sui: '#4DA2FF',
   solana: '#14B87A',
 };
 

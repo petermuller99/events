@@ -1,4 +1,4 @@
-export type ChainId = 'bitcoin' | 'ethereum' | 'bsc' | 'core' | 'solana';
+export type ChainId = 'bitcoin' | 'ethereum' | 'bsc' | 'core' | 'cronos' | 'solana' | 'sui';
 export type NetworkMode = 'testnet' | 'mainnet';
 export type TokenSymbol = 'USDT' | 'USDC';
 /** 'native' for the network's own coin, USDT/USDC, or f:<address> for a found coin. */
@@ -35,8 +35,8 @@ export function isStableAssetId(id: string): boolean {
 export interface ChainConfig {
   id: ChainId;
   name: string;
-  standard: 'ERC-20' | 'BEP-20' | 'SPL' | 'Bitcoin' | 'Core';
-  kind: 'evm' | 'solana' | 'bitcoin';
+  standard: 'ERC-20' | 'BEP-20' | 'SPL' | 'Bitcoin' | 'Core' | 'Cronos' | 'Sui';
+  kind: 'evm' | 'solana' | 'bitcoin' | 'sui';
   nativeSymbol: string;
   nativeDecimals: number;
   rpcUrl: string;
@@ -50,7 +50,7 @@ export interface ChainConfig {
   tokens: TokenConfig[];
 }
 
-export const CHAIN_IDS: ChainId[] = ['bitcoin', 'ethereum', 'bsc', 'core', 'solana'];
+export const CHAIN_IDS: ChainId[] = ['bitcoin', 'ethereum', 'bsc', 'core', 'cronos', 'solana', 'sui'];
 
 // Each URL can be overridden at build time, e.g. EXPO_PUBLIC_ETHEREUM_RPC_URL=https://…
 // Expo only inlines EXPO_PUBLIC_* variables written out literally, hence no loop.
@@ -61,6 +61,10 @@ const env = {
   bscTestnet: process.env.EXPO_PUBLIC_BSC_TESTNET_RPC_URL,
   coreMainnet: process.env.EXPO_PUBLIC_CORE_RPC_URL,
   coreTestnet: process.env.EXPO_PUBLIC_CORE_TESTNET_RPC_URL,
+  cronosMainnet: process.env.EXPO_PUBLIC_CRONOS_RPC_URL,
+  cronosTestnet: process.env.EXPO_PUBLIC_CRONOS_TESTNET_RPC_URL,
+  suiMainnet: process.env.EXPO_PUBLIC_SUI_GRAPHQL_URL,
+  suiTestnet: process.env.EXPO_PUBLIC_SUI_TESTNET_GRAPHQL_URL,
   solanaMainnet: process.env.EXPO_PUBLIC_SOLANA_RPC_URL,
   solanaTestnet: process.env.EXPO_PUBLIC_SOLANA_DEVNET_RPC_URL,
   bitcoinMainnet: process.env.EXPO_PUBLIC_BITCOIN_API_URL,
@@ -128,6 +132,35 @@ export const CHAINS: Record<NetworkMode, Record<ChainId, ChainConfig>> = {
       explorerTxUrl: (h) => `https://scan.coredao.org/tx/${h}`,
       explorerAddressUrl: (a) => `https://scan.coredao.org/address/${a}`,
       // CORE only: stablecoins on Core are bridged copies, not issued by Tether or Circle.
+      tokens: [],
+    },
+    cronos: {
+      id: 'cronos',
+      name: 'Cronos',
+      standard: 'Cronos',
+      kind: 'evm',
+      nativeSymbol: 'CRO',
+      nativeDecimals: 18,
+      rpcUrl: env.cronosMainnet || 'https://evm.cronos.org',
+      chainId: 25,
+      explorerName: 'Cronos Explorer',
+      explorerTxUrl: (h) => `https://explorer.cronos.org/tx/${h}`,
+      explorerAddressUrl: (a) => `https://explorer.cronos.org/address/${a}`,
+      // CRO only: stablecoins on Cronos are bridged copies, not issued by Tether or Circle.
+      tokens: [],
+    },
+    sui: {
+      id: 'sui',
+      name: 'Sui',
+      standard: 'Sui',
+      kind: 'sui',
+      nativeSymbol: 'SUI',
+      nativeDecimals: 9,
+      // Sui's GraphQL service (its public JSON-RPC was switched off in 2026).
+      rpcUrl: env.suiMainnet || 'https://graphql.mainnet.sui.io/graphql',
+      explorerName: 'Suiscan',
+      explorerTxUrl: (h) => `https://suiscan.xyz/mainnet/tx/${h}`,
+      explorerAddressUrl: (a) => `https://suiscan.xyz/mainnet/account/${a}`,
       tokens: [],
     },
     solana: {
@@ -208,6 +241,34 @@ export const CHAINS: Record<NetworkMode, Record<ChainId, ChainConfig>> = {
       explorerTxUrl: (h) => `https://scan.test2.btcs.network/tx/${h}`,
       explorerAddressUrl: (a) => `https://scan.test2.btcs.network/address/${a}`,
       faucetUrl: 'https://scan.test2.btcs.network/faucet',
+      tokens: [],
+    },
+    cronos: {
+      id: 'cronos',
+      name: 'Cronos Testnet',
+      standard: 'Cronos',
+      kind: 'evm',
+      nativeSymbol: 'TCRO',
+      nativeDecimals: 18,
+      rpcUrl: env.cronosTestnet || 'https://evm-t3.cronos.org',
+      chainId: 338,
+      explorerName: 'Cronos Explorer',
+      explorerTxUrl: (h) => `https://explorer.cronos.org/testnet/tx/${h}`,
+      explorerAddressUrl: (a) => `https://explorer.cronos.org/testnet/address/${a}`,
+      tokens: [],
+    },
+    sui: {
+      id: 'sui',
+      name: 'Sui Testnet',
+      standard: 'Sui',
+      kind: 'sui',
+      nativeSymbol: 'SUI',
+      nativeDecimals: 9,
+      rpcUrl: env.suiTestnet || 'https://graphql.testnet.sui.io/graphql',
+      explorerName: 'Suiscan',
+      explorerTxUrl: (h) => `https://suiscan.xyz/testnet/tx/${h}`,
+      explorerAddressUrl: (a) => `https://suiscan.xyz/testnet/account/${a}`,
+      faucetUrl: 'https://faucet.sui.io/',
       tokens: [],
     },
     solana: {

@@ -61,7 +61,7 @@ interface Prices {
 
 /**
  * Dollar value of one coin, scaled to 18 decimals so coins can be added up. Stablecoins
- * count as $1; fee coins (BTC, ETH, BNB, CORE, SOL) and found coins use the current
+ * count as $1; fee coins (BTC, ETH, BNB, CORE, CRO, SOL, SUI) and found coins use the current
  * price, or null without one.
  */
 function coinValue(row: ChainBalances, asset: ChainBalances['assets'][number]['asset'], balance: bigint, prices: Prices): bigint | null {
@@ -435,7 +435,7 @@ export default function Home() {
         </Banner>
       ))}
       {coins.some((c) => !c.asset.contract && c.value == null && c.balance > 0n) ? (
-        <Text style={s.fee}>Couldn’t get today’s prices, so BTC, ETH, BNB, CORE and SOL aren’t in your total yet.</Text>
+        <Text style={s.fee}>Couldn’t get today’s prices, so BTC, ETH, BNB, CORE, CRO, SOL and SUI aren’t in your total yet.</Text>
       ) : null}
     </Screen>
   );

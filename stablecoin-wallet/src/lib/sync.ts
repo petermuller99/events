@@ -5,6 +5,7 @@ import {
   emptyState,
   fromBitcoinTxs,
   fromSolanaTx,
+  fromSuiTxs,
   fromTransferLogs,
   mergeItems,
   setStatus,
@@ -18,6 +19,7 @@ import { BitcoinClient } from './bitcoin';
 import * as evm from './evm';
 import { loadFound } from './found';
 import { associatedTokenAddress, SolanaClient } from './solana';
+import { SuiClient } from './sui';
 import { tokensFor } from './wallet';
 
 export interface WatchedAddresses {
@@ -26,6 +28,8 @@ export interface WatchedAddresses {
   solana?: string;
   /** Missing in watch state saved by versions before Bitcoin support. */
   bitcoin?: string;
+  /** Missing in watch state saved by versions before Sui support. */
+  sui?: string;
 }
 
 export interface SyncOutcome {
@@ -48,6 +52,8 @@ const PENDING_TIMEOUT_MS: Record<ChainConfig['kind'], number> = {
   solana: 5 * 60_000,
   // An unconfirmed Bitcoin payment can wait in line for days when fees are low.
   bitcoin: 3 * 86_400_000,
+  // Sui confirms within seconds; a send it never saw is long gone after this.
+  sui: 30 * 60_000,
 };
 /** Solana: how many recent signatures to look at per address, and how many to remember. */
 const SOLANA_SIGNATURES = 10;
@@ -97,6 +103,17 @@ function bitcoin(chain: ChainConfig): BitcoinClient {
 
 async function syncBitcoin(chain: ChainConfig, owner: string): Promise<ChainSync> {
   return { items: fromBitcoinTxs(chain, owner, await bitcoin(chain).getTransactions(owner)) };
+}
+
+const suiClients = new Map<string, SuiClient>();
+function sui(chain: ChainConfig): SuiClient {
+  let c = suiClients.get(chain.rpcUrl);
+  if (!c) suiClients.set(chain.rpcUrl, (c = new SuiClient(chain.rpcUrl)));
+  return c;
+}
+
+async function syncSui(chain: ChainConfig, owner: string): Promise<ChainSync> {
+  return { items: fromSuiTxs(chain, owner, await sui(chain).getTransactions(owner)) };
 }
 
 const solanaClients = new Map<string, SolanaClient>();
@@ -189,7 +206,9 @@ async function checkPending(chain: ChainConfig, item: ActivityItem): Promise<Act
   const status =
     chain.kind === 'bitcoin'
       ? await bitcoin(chain).getStatus(item.hash)
-      : chain.kind === 'solana'
+      : chain.kind === 'sui'
+        ? await sui(chain).getStatus(item.hash)
+        : chain.kind === 'solana'
         ? await solana(chain).getStatus(item.hash)
         : await evm.getProvider(chain).getTransactionReceipt(item.hash).then((r) =>
         r == null ? 'pending' : r.status === 1 ? 'confirmed' : 'failed',
@@ -218,13 +237,16 @@ async function doSync(mode: NetworkMode, addresses: WatchedAddresses): Promise<S
     CHAIN_IDS.map(async (id): Promise<[ChainId, ChainSync | null]> => {
       // Found coins are watched like the coins Pearl Wallet ships with.
       const chain = { ...getChain(mode, id), tokens: tokensFor(mode, id) };
-      const owner = id === 'bitcoin' ? addresses.bitcoin : id === 'solana' ? addresses.solana : addresses.evm;
+      const owner =
+        id === 'bitcoin' ? addresses.bitcoin : id === 'solana' ? addresses.solana : id === 'sui' ? addresses.sui : addresses.evm;
       if (!owner) return [id, null];
       try {
         const result =
           chain.kind === 'bitcoin'
             ? await syncBitcoin(chain, owner)
-            : chain.kind === 'solana'
+            : chain.kind === 'sui'
+              ? await syncSui(chain, owner)
+              : chain.kind === 'solana'
               ? await syncSolana(chain, owner, state)
               : await syncEvm(chain, owner, state);
         return [id, result];
